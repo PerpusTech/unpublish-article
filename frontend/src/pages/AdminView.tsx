@@ -25,6 +25,14 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
   const [tokensLoading, setTokensLoading] = useState<boolean>(false);
   const [isGeneratorOpen, setIsGeneratorOpen] = useState<boolean>(false);
 
+  // Live Incident Alert State
+  const [recentIncidents, setRecentIncidents] = useState<any[]>([]);
+  const [dismissedIncidentIds, setDismissedIncidentIds] = useState<Set<number>>(new Set());
+  const [soundAlertEnabled, setSoundAlertEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('ums_admin_incident_sound') !== 'false';
+  });
+  const lastNotifiedIncidentIdRef = React.useRef<number | null>(null);
+
   // Login state
   const [ssoLoading, setSsoLoading] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -39,6 +47,35 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
     }, 4000);
   }, []);
 
+  // Web Audio synthesizer for security chime (double-beep alert)
+  const playSecurityChime = React.useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      
+      const now = ctx.currentTime;
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(880, now); // A5 note
+      osc1.frequency.setValueAtTime(659.25, now + 0.12); // E5 note
+
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+      osc1.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start(now);
+      osc1.stop(now + 0.35);
+    } catch {
+      // Audio playback suppressed by browser policy if un-interacted
+    }
+  }, []);
+
   const checkAdminAuth = async () => {
     setLoading(true);
     try {
@@ -46,6 +83,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
       if (data?.admin) {
         setAdminUser(data.admin);
         fetchTokens();
+        fetchIncidents();
       } else {
         setAdminUser(null);
       }
@@ -65,6 +103,76 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
       console.error('Failed to load tokens:', err);
     } finally {
       setTokensLoading(false);
+    }
+  };
+
+  const fetchIncidents = React.useCallback(async () => {
+    try {
+      const res = await api.getRecentIncidents(15);
+      if (res.success && Array.isArray(res.items)) {
+        setRecentIncidents(res.items);
+
+        // Check if there is a new incident to chime for
+        if (res.items.length > 0) {
+          const latestId = Number(res.items[0].id);
+          if (
+            lastNotifiedIncidentIdRef.current !== null &&
+            latestId > lastNotifiedIncidentIdRef.current &&
+            soundAlertEnabled
+          ) {
+            playSecurityChime();
+          }
+          lastNotifiedIncidentIdRef.current = latestId;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to poll incidents:', err);
+    }
+  }, [playSecurityChime, soundAlertEnabled]);
+
+  // Periodic polling for incidents and active tokens every 5 seconds
+  useEffect(() => {
+    if (!adminUser) return;
+    const interval = setInterval(() => {
+      fetchIncidents();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [adminUser, fetchIncidents]);
+
+  const toggleSoundAlert = () => {
+    const nextVal = !soundAlertEnabled;
+    setSoundAlertEnabled(nextVal);
+    localStorage.setItem('ums_admin_incident_sound', String(nextVal));
+    if (nextVal) {
+      playSecurityChime();
+      showToast('Suara notifikasi insiden diaktifkan.', 'success');
+    } else {
+      showToast('Suara notifikasi insiden dinonaktifkan.', 'success');
+    }
+  };
+
+  const handleDismissIncident = (id: number) => {
+    setDismissedIncidentIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
+
+  const handleDismissAllIncidents = () => {
+    const allIds = recentIncidents.map((inc) => Number(inc.id));
+    setDismissedIncidentIds(new Set(allIds));
+    showToast('Semua notifikasi insiden ditutup.', 'success');
+  };
+
+  const handleRevokeFromAlert = async (tokenId: string, patronName: string, tokenCode: string) => {
+    try {
+      await api.revokeToken(tokenId);
+      showToast(`Sesi pemustaka ${patronName} (${tokenCode}) berhasil dicabut seketika!`, 'success');
+      fetchTokens();
+      fetchIncidents();
+    } catch (err: any) {
+      showToast(err.message || 'Gagal mencabut sesi token.', 'danger');
     }
   };
 
@@ -441,7 +549,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
       </div>
 
       {/* Daily Metrics Cards (UI/UX Pro Max) */}
-      <div className="stat-card-grid" style={{ marginBottom: 28 }}>
+      <div className="stat-card-grid" style={{ marginBottom: 28, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
         <div className="admin-metric-card metric-primary">
           <div className="admin-metric-content">
             <div className="admin-metric-label">Pemustaka Sedang Membaca</div>
@@ -501,7 +609,232 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
             </svg>
           </div>
         </div>
+
+        {/* 4th KPI Card: Live Security Incidents */}
+        <div
+          className="admin-metric-card"
+          style={{
+            borderColor: recentIncidents.length > 0 ? 'rgba(239, 68, 68, 0.4)' : undefined,
+            backgroundColor: recentIncidents.length > 0 ? 'rgba(239, 68, 68, 0.04)' : undefined,
+          }}
+        >
+          <div className="admin-metric-content">
+            <div className="admin-metric-label" style={{ color: recentIncidents.length > 0 ? '#dc2626' : undefined }}>
+              Insiden Pelanggaran Keamanan
+            </div>
+            <div
+              className="admin-metric-number"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                color: recentIncidents.length > 0 ? '#b91c1c' : undefined,
+              }}
+            >
+              {recentIncidents.length}
+              {recentIncidents.length > 0 && <span className="incident-beacon-indicator" title="Insiden keamanan live terdeteksi" />}
+            </div>
+            <div className="admin-metric-subtext">Percobaan screenshot / cetak / devtools</div>
+          </div>
+          <div
+            className="admin-metric-icon-wrap"
+            style={{
+              backgroundColor: recentIncidents.length > 0 ? 'rgba(239, 68, 68, 0.12)' : undefined,
+              color: recentIncidents.length > 0 ? '#dc2626' : undefined,
+            }}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          </div>
+        </div>
       </div>
+
+      {/* 🚨 Live Incident Alert Banner (Real-time Security Violation Telemetry) */}
+      {(() => {
+        const activeIncidents = recentIncidents.filter((inc) => !dismissedIncidentIds.has(Number(inc.id)));
+        if (activeIncidents.length === 0) return null;
+
+        const formatIncidentType = (typeStr: string) => {
+          if (!typeStr) return 'Percobaan Pelanggaran Keamanan';
+          if (typeStr.includes('PRINTSCREEN')) return 'Tangkapan Layar (PrintScreen / PrtScn)';
+          if (typeStr.includes('SNIPPING')) return 'Snipping Tool / Screenshot Windows';
+          if (typeStr.includes('DEVTOOLS')) return 'Inspeksi Kode (DevTools / F12)';
+          if (typeStr.includes('PRINT') || typeStr.includes('SAVE')) return 'Percobaan Cetak / Unduh Dokumen';
+          if (typeStr.includes('COPY')) return 'Penyalinan Teks (Copy Selection)';
+          return typeStr;
+        };
+
+        const formatTimeAgo = (dateStr: string) => {
+          try {
+            const date = new Date(dateStr);
+            const now = new Date();
+            const diffSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+            if (diffSeconds < 60) return `${Math.max(1, diffSeconds)} detik lalu`;
+            const diffMinutes = Math.floor(diffSeconds / 60);
+            if (diffMinutes < 60) return `${diffMinutes} menit lalu`;
+            return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          } catch {
+            return dateStr;
+          }
+        };
+
+        return (
+          <div className="live-incident-banner animated-fade-in">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className="incident-beacon-indicator" />
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: 16,
+                    fontWeight: 800,
+                    color: '#b91c1c',
+                    fontFamily: 'var(--font-heading)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <span>🚨 PERINGATAN PELANGGARAN KEAMANAN AKTIF</span>
+                  <span className="badge-incident-warning">
+                    {activeIncidents.length} Insiden Terdeteksi
+                  </span>
+                </h3>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  className="incident-sound-btn"
+                  onClick={toggleSoundAlert}
+                  title="Aktifkan / nonaktifkan suara notifikasi"
+                >
+                  {soundAlertEnabled ? (
+                    <>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+                      </svg>
+                      <span>Suara: ON</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                        <line x1="23" y1="9" x2="17" y2="15" />
+                        <line x1="17" y1="9" x2="23" y2="15" />
+                      </svg>
+                      <span>Suara: OFF</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleDismissAllIncidents}
+                  style={{ fontSize: 12, padding: '5px 10px' }}
+                >
+                  Tutup Semua
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {activeIncidents.slice(0, 4).map((inc) => {
+                const isTokenActive = inc.token_status === 'ACTIVE';
+                return (
+                  <div key={inc.id} className="incident-card-item">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                        <strong style={{ fontSize: 13.5, color: 'var(--color-text)' }}>
+                          {inc.patron_name || 'Pemustaka Tidak Dikenal'}
+                        </strong>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--color-text-muted)' }}>
+                          ({inc.patron_nim})
+                        </span>
+                        <span
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 11,
+                            background: 'var(--color-surface-subtle)',
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            border: '1px solid var(--color-border)',
+                            color: 'var(--color-primary)',
+                            fontWeight: 700,
+                          }}
+                        >
+                          Token: {inc.token_code || inc.token_id?.slice(0, 8)}
+                        </span>
+                        <span className="badge-incident-warning">
+                          ⚠️ {formatIncidentType(inc.last_incident_type || inc.action)}
+                        </span>
+                        <span style={{ fontSize: 11.5, color: 'var(--color-text-light)' }}>
+                          ⏱️ {formatTimeAgo(inc.created_at || inc.last_incident_at)}
+                        </span>
+                      </div>
+
+                      {inc.article_title && (
+                        <div
+                          style={{
+                            fontSize: 12.5,
+                            color: 'var(--color-text-muted)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                          title={inc.article_title}
+                        >
+                          📄 Naskah: {inc.article_title}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                      {isTokenActive && inc.token_id && (
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-sm"
+                          onClick={() => handleRevokeFromAlert(inc.token_id, inc.patron_name, inc.token_code)}
+                          style={{
+                            fontWeight: 700,
+                            fontSize: 11.5,
+                            padding: '5px 9px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            backgroundColor: '#dc2626',
+                          }}
+                          title="Cabut izin sesi pemustaka ini sekarang juga"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                          </svg>
+                          <span>Cabut Sesi</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleDismissIncident(Number(inc.id))}
+                        style={{ fontSize: 11.5, padding: '5px 8px' }}
+                        title="Tutup pemberitahuan ini"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modern Navigation Tabs (UI/UX Pro Max) */}
       <div className="admin-tab-bar">

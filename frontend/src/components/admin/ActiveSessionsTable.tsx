@@ -442,161 +442,184 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
                 </td>
               </tr>
             ) : (
-              tokens.map((token) => (
-                <tr key={token.id}>
-                  <td>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              tokens.map((token) => {
+                const hasIncident = Boolean(token.incident_count && token.incident_count > 0);
+
+                const formatIncidentShort = (tStr?: string) => {
+                  if (!tStr) return 'Pelanggaran';
+                  if (tStr.includes('PRINTSCREEN')) return 'PrintScreen';
+                  if (tStr.includes('SNIPPING')) return 'Snipping';
+                  if (tStr.includes('DEVTOOLS')) return 'DevTools';
+                  if (tStr.includes('PRINT') || tStr.includes('SAVE')) return 'Cetak/Simpan';
+                  if (tStr.includes('COPY')) return 'Copy Teks';
+                  return tStr;
+                };
+
+                return (
+                  <tr key={token.id} className={hasIncident ? 'row-security-violation' : undefined}>
+                    <td>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <span
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontWeight: 700,
+                            fontSize: 13,
+                            color: hasIncident ? '#dc2626' : 'var(--color-primary)',
+                            letterSpacing: '0.5px',
+                          }}
+                        >
+                          {token.token_code}
+                        </span>
+                        <button
+                          type="button"
+                          className="copy-token-btn"
+                          onClick={() => handleCopyToken(token.token_code, token.id)}
+                          title="Salin kode token"
+                        >
+                          {copiedTokenId === token.id ? (
+                            <span style={{ color: 'var(--color-success)', fontWeight: 800 }}>✓ Salin</span>
+                          ) : (
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 700, color: 'var(--color-text)' }}>{token.patron_name}</div>
+                      {hasIncident && (
+                        <div style={{ marginTop: 4 }}>
+                          <span className="badge-incident-warning" title={`Terakhir terdeteksi: ${token.last_incident_at || 'Baru saja'}`}>
+                            🚨 {token.incident_count}x Insiden ({formatIncidentShort(token.last_incident_type)})
+                          </span>
+                        </div>
+                      )}
+                      {token.notes && (
+                        <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                          {token.notes}
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--color-text-muted)' }}>
+                        {token.patron_nim}
+                      </span>
+                    </td>
+                    <td>{renderBadge(token.status)}</td>
+                    <td>
+                      <span style={{ fontWeight: 600 }}>{token.duration_minutes} Menit</span>
+                      {token.extended_minutes > 0 && (
+                        <span style={{ fontSize: 11, color: 'var(--color-success)', display: 'block', fontWeight: 600 }}>
+                          (+{token.extended_minutes}m diperpanjang)
+                        </span>
+                      )}
+                    </td>
+                    <td>
                       <span
                         style={{
                           fontFamily: 'var(--font-mono)',
-                          fontWeight: 700,
-                          fontSize: 13,
-                          color: 'var(--color-primary)',
-                          letterSpacing: '0.5px',
+                          fontWeight: token.status === 'ACTIVE' ? 800 : 500,
+                          color: token.status === 'ACTIVE' ? (hasIncident ? '#dc2626' : 'var(--color-primary)') : 'var(--color-text-muted)',
                         }}
                       >
-                        {token.token_code}
+                        {formatRemaining(token.remaining_seconds)}
                       </span>
-                      <button
-                        type="button"
-                        className="copy-token-btn"
-                        onClick={() => handleCopyToken(token.token_code, token.id)}
-                        title="Salin kode token"
-                      >
-                        {copiedTokenId === token.id ? (
-                          <span style={{ color: 'var(--color-success)', fontWeight: 800 }}>✓ Salin</span>
-                        ) : (
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ fontWeight: 700, color: 'var(--color-text)' }}>{token.patron_name}</div>
-                    {token.notes && (
-                      <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 2 }}>
-                        {token.notes}
-                      </div>
-                    )}
-                  </td>
-                  <td>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--color-text-muted)' }}>
-                      {token.patron_nim}
-                    </span>
-                  </td>
-                  <td>{renderBadge(token.status)}</td>
-                  <td>
-                    <span style={{ fontWeight: 600 }}>{token.duration_minutes} Menit</span>
-                    {token.extended_minutes > 0 && (
-                      <span style={{ fontSize: 11, color: 'var(--color-success)', display: 'block', fontWeight: 600 }}>
-                        (+{token.extended_minutes}m diperpanjang)
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    <span
-                      style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontWeight: token.status === 'ACTIVE' ? 800 : 500,
-                        color: token.status === 'ACTIVE' ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                      }}
-                    >
-                      {formatRemaining(token.remaining_seconds)}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <div style={{ display: 'inline-flex', gap: 4, justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
-                      {/* Share WhatsApp & Email */}
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => {
-                          setShareTargetToken(token);
-                          setShareModalOpen(true);
-                        }}
-                        title="Kirim / Bagikan ke WhatsApp & Email Pemustaka"
-                        style={{ fontSize: 11.5, padding: '4px 7px', color: '#16a34a', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="18" cy="5" r="3" />
-                          <circle cx="6" cy="12" r="3" />
-                          <circle cx="18" cy="19" r="3" />
-                          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-                        </svg>
-                        <span>Kirim</span>
-                      </button>
-
-                      {/* Print Thermal Slip */}
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => handlePrintSingleThermal(token)}
-                        title="Cetak slip tiket ke printer termal POS"
-                        style={{ fontSize: 11.5, padding: '4px 7px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="6 9 6 2 18 2 18 9" />
-                          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                          <rect x="6" y="14" width="12" height="8" />
-                        </svg>
-                        <span>Slip</span>
-                      </button>
-
-                      {(token.status === 'ACTIVE' || token.status === 'EXPIRED') && (
-                        <>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => handleExtend(token.id, 30, token.patron_name)}
-                            disabled={actionLoading === token.id}
-                            title="Tambah durasi membaca 30 menit"
-                            style={{ fontSize: 11.5, padding: '4px 6px', fontWeight: 700 }}
-                          >
-                            +30m
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => handleExtend(token.id, 60, token.patron_name)}
-                            disabled={actionLoading === token.id}
-                            title="Tambah durasi membaca 1 jam"
-                            style={{ fontSize: 11.5, padding: '4px 6px', fontWeight: 700 }}
-                          >
-                            +1j
-                          </button>
-                        </>
-                      )}
-
-                      {token.status !== 'REVOKED' && token.status !== 'EXPIRED' && (
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'inline-flex', gap: 4, justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
+                        {/* Share WhatsApp & Email */}
                         <button
                           type="button"
-                          className="btn btn-danger btn-sm"
-                          onClick={() => setRevokeTarget({ id: token.id, name: token.patron_name, tokenCode: token.token_code })}
-                          disabled={actionLoading === token.id}
-                          title="Cabut sesi sekarang"
-                          style={{
-                            fontSize: 11.5,
-                            padding: '4px 7px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => {
+                            setShareTargetToken(token);
+                            setShareModalOpen(true);
                           }}
+                          title="Kirim / Bagikan ke WhatsApp & Email Pemustaka"
+                          style={{ fontSize: 11.5, padding: '4px 7px', color: '#16a34a', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                            <circle cx="18" cy="5" r="3" />
+                            <circle cx="6" cy="12" r="3" />
+                            <circle cx="18" cy="19" r="3" />
+                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
                           </svg>
-                          <span>Cabut</span>
+                          <span>Kirim</span>
                         </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
+
+                        {/* Print Thermal Slip */}
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => handlePrintSingleThermal(token)}
+                          title="Cetak slip tiket ke printer termal POS"
+                          style={{ fontSize: 11.5, padding: '4px 7px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="6 9 6 2 18 2 18 9" />
+                            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                            <rect x="6" y="14" width="12" height="8" />
+                          </svg>
+                          <span>Slip</span>
+                        </button>
+
+                        {(token.status === 'ACTIVE' || token.status === 'EXPIRED') && (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => handleExtend(token.id, 30, token.patron_name)}
+                              disabled={actionLoading === token.id}
+                              title="Tambah durasi membaca 30 menit"
+                              style={{ fontSize: 11.5, padding: '4px 6px', fontWeight: 700 }}
+                            >
+                              +30m
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => handleExtend(token.id, 60, token.patron_name)}
+                              disabled={actionLoading === token.id}
+                              title="Tambah durasi membaca 1 jam"
+                              style={{ fontSize: 11.5, padding: '4px 6px', fontWeight: 700 }}
+                            >
+                              +1j
+                            </button>
+                          </>
+                        )}
+
+                        {token.status !== 'REVOKED' && token.status !== 'EXPIRED' && (
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-sm"
+                            onClick={() => setRevokeTarget({ id: token.id, name: token.patron_name, tokenCode: token.token_code })}
+                            disabled={actionLoading === token.id}
+                            title={hasIncident ? 'Peringatan! Sesi ini memiliki pelanggaran. Klik untuk mencabut izin sekarang.' : 'Cabut sesi sekarang'}
+                            style={{
+                              fontSize: 11.5,
+                              padding: '4px 7px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              backgroundColor: hasIncident ? '#dc2626' : undefined,
+                              fontWeight: hasIncident ? 800 : 600,
+                            }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                            </svg>
+                            <span>Cabut</span>
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

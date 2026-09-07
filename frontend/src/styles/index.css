@@ -120,6 +120,132 @@ html {
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+}
+
+/* ==========================================================================
+   Modern Minimalist Custom Scrollbar Design System (All Sliders & Scrollables)
+   ========================================================================== */
+
+/* Firefox standard scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+}
+
+[data-theme="dark"] * {
+  scrollbar-color: rgba(148, 163, 184, 0.32) transparent;
+}
+
+/* Chrome, Edge, Safari & Webkit Browsers */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(100, 116, 139, 0.35);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(71, 85, 105, 0.65);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--color-primary);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Dark Mode Scrollbar */
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.28);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(148, 163, 184, 0.55);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:active {
+  background-color: var(--color-primary);
+}
+
+/* Input Range / Slider Components (input[type="range"]) */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: var(--color-border);
+  border-radius: 9999px;
+  outline: none;
+  transition: background 0.2s ease;
+  cursor: pointer;
+}
+
+[data-theme="dark"] input[type="range"] {
+  background: #334155;
+}
+
+input[type="range"]:hover {
+  background: var(--color-border-dark);
+}
+
+/* Slider Thumb (Webkit) */
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+}
+
+input[type="range"]::-webkit-slider-thumb:active {
+  transform: scale(0.95);
+}
+
+/* Slider Thumb (Firefox) */
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+input[type="range"]::-moz-range-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
 }
 
 body {
@@ -928,20 +1054,21 @@ a:hover {
   border-bottom-color: var(--color-primary);
 }
 
-/* Theme Toggle Placed Above Footer */
+/* Floating Theme Toggle (Fixed at Bottom-Right, Top-most Z-Index) */
 .theme-toggle-container {
-  max-width: 1240px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 0 24px 16px;
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9995;
   display: flex;
-  justify-content: flex-end;
   align-items: center;
+  justify-content: center;
+  pointer-events: auto;
 }
 
 .theme-toggle-btn {
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -950,22 +1077,35 @@ a:hover {
   background-color: var(--color-surface);
   color: var(--color-text);
   border: 1px solid var(--color-border);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15), 0 2px 6px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   cursor: pointer;
-  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.15s ease,
-              border-color 0.15s ease,
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.2s ease,
+              border-color 0.2s ease,
               background-color 0.2s ease;
 }
 
 .theme-toggle-btn:hover {
-  transform: translateY(-2px);
-  border-color: var(--color-border-dark);
-  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.12);
+  transform: translateY(-3px) scale(1.05);
+  border-color: var(--color-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22), 0 0 14px rgba(37, 99, 235, 0.28);
 }
 
 .theme-toggle-btn:active {
   transform: scale(0.92);
+}
+
+@media (max-width: 640px) {
+  .theme-toggle-container {
+    bottom: 16px;
+    right: 16px;
+  }
+  .theme-toggle-btn {
+    width: 42px;
+    height: 42px;
+  }
 }
 
 /* Print Slip Styles (For Pustakawan Print) */
@@ -1807,4 +1947,473 @@ a:hover {
     size: auto;
   }
 }
+
+/* ==========================================================================
+   Comprehensive Mobile & Tablet Responsive Design System
+   Breakpoints:
+   - 1024px: Desktop / Tablet Landscape
+   - 768px:  Tablet Portrait / Large Mobile
+   - 640px:  Mobile Phone
+   - 480px:  Small Smartphone
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. General Layout & Containers (< 1024px)
+   -------------------------------------------------------------------------- */
+@media (max-width: 1024px) {
+  .content-wrapper {
+    padding: 20px 18px;
+  }
+  
+  .stat-card-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+
+  .modal-dialog.large {
+    max-width: 94vw;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   2. Tablet & Mobile Optimizations (< 768px)
+   -------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  .content-wrapper {
+    padding: 16px 14px;
+  }
+
+  /* Site Header */
+  .site-header {
+    position: static;
+  }
+
+  .header-inner {
+    padding: 12px 16px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .brand-section {
+    justify-content: flex-start;
+    gap: 10px;
+  }
+
+  .brand-title {
+    font-size: 14.5px;
+    line-height: 1.3;
+  }
+
+  .brand-subtitle {
+    font-size: 11.5px;
+    line-height: 1.35;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .header-actions .btn {
+    flex: 1 1 auto;
+    text-align: center;
+    justify-content: center;
+  }
+
+  .session-timer-badge {
+    width: 100%;
+    justify-content: space-between;
+    padding: 8px 12px;
+    font-size: 12.5px;
+  }
+
+  /* Search Container & Form */
+  .search-container {
+    padding: 16px 14px;
+    margin-bottom: 18px;
+  }
+
+  .search-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .search-row > * {
+    width: 100%;
+  }
+
+  .search-row .btn {
+    width: 100%;
+    justify-content: center;
+    padding: 11px 16px;
+  }
+
+  .filter-pills {
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .pill-btn {
+    font-size: 11.5px;
+    padding: 5px 10px;
+  }
+
+  /* Cards */
+  .card {
+    padding: 16px 14px;
+    margin-bottom: 14px;
+  }
+
+  .card-title {
+    font-size: 15.5px;
+    line-height: 1.35;
+  }
+
+  .card-meta {
+    gap: 6px;
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+
+  .card-abstract {
+    font-size: 12.5px;
+    line-height: 1.55;
+    margin-bottom: 14px;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .card .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Navigation Tabs (Smooth Touch Scrolling) */
+  .nav-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    gap: 4px;
+    margin-bottom: 18px;
+    padding-bottom: 4px;
+    border-bottom: 2px solid var(--color-border);
+  }
+
+  .tab-btn {
+    white-space: nowrap;
+    padding: 8px 14px;
+    font-size: 12.5px;
+    flex-shrink: 0;
+  }
+
+  /* Modals */
+  .modal-backdrop,
+  .modal-overlay {
+    padding: 10px;
+  }
+
+  .modal-dialog,
+  .modal-content {
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: 92vh !important;
+    margin: 0 !important;
+    border-radius: var(--radius-md) !important;
+  }
+
+  .modal-header {
+    padding: 14px 16px !important;
+  }
+
+  .modal-title {
+    font-size: 16px !important;
+    line-height: 1.35 !important;
+  }
+
+  .modal-body {
+    padding: 16px 14px !important;
+  }
+
+  .modal-footer {
+    padding: 12px 16px !important;
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .modal-footer .btn {
+    width: 100%;
+    justify-content: center;
+    padding: 10px 14px;
+  }
+
+  /* Data Tables */
+  .table-wrapper,
+  .table-container {
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 10px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  /* Pagination Component */
+  .pagination-container {
+    padding: 14px 14px;
+    gap: 12px;
+    align-items: center;
+    text-align: center;
+  }
+
+  .pagination-info {
+    justify-content: center;
+    font-size: 12px;
+    width: 100%;
+  }
+
+  .pagination-controls {
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .pagination-btn {
+    min-width: 32px;
+    height: 32px;
+    padding: 0 6px;
+    font-size: 12px;
+  }
+
+  .pagination-page-size,
+  .pagination-jump {
+    justify-content: center;
+    font-size: 12px;
+    width: 100%;
+  }
+
+  /* Admin Header & Toolbar */
+  .admin-header-bar {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 14px !important;
+  }
+
+  .admin-header-bar .btn-group {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .admin-header-bar .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   3. Small Smartphone Optimizations (< 480px)
+   -------------------------------------------------------------------------- */
+@media (max-width: 480px) {
+  .content-wrapper {
+    padding: 12px 10px;
+  }
+
+  .brand-logo-badge {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+
+  .brand-title {
+    font-size: 13.5px;
+  }
+
+  .brand-subtitle {
+    display: none;
+  }
+
+  .stat-card-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .stat-card {
+    padding: 14px 16px;
+  }
+
+  .stat-value {
+    font-size: 22px;
+  }
+
+  .token-input-code {
+    font-size: 17px;
+    letter-spacing: 2px;
+    padding: 10px;
+  }
+
+  .badge {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+
+  .theme-toggle-container {
+    bottom: 14px;
+    right: 14px;
+  }
+
+  .theme-toggle-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* Thermal printer slip preview */
+  .thermal-receipt-slip.slip-58mm,
+  .thermal-receipt-slip.slip-80mm {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   4. Live Security Incident Alert System Styles (Meja Layanan Admin)
+   -------------------------------------------------------------------------- */
+.live-incident-banner {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(185, 28, 28, 0.12) 100%);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  box-shadow: 0 4px 20px -2px rgba(239, 68, 68, 0.2), inset 0 0 12px rgba(239, 68, 68, 0.05);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  animation: incidentAlertPulse 3s infinite alternate;
+  position: relative;
+  overflow: hidden;
+}
+
+[data-theme='dark'] .live-incident-banner {
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.35) 0%, rgba(153, 27, 27, 0.25) 100%);
+  border-color: rgba(248, 113, 113, 0.5);
+  box-shadow: 0 4px 24px -2px rgba(239, 68, 68, 0.35);
+}
+
+@keyframes incidentAlertPulse {
+  0% {
+    border-color: rgba(239, 68, 68, 0.4);
+    box-shadow: 0 4px 16px rgba(239, 68, 68, 0.15);
+  }
+  100% {
+    border-color: rgba(239, 68, 68, 0.85);
+    box-shadow: 0 6px 28px rgba(239, 68, 68, 0.3);
+  }
+}
+
+.incident-beacon-indicator {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: #ef4444;
+  display: inline-block;
+}
+
+.incident-beacon-indicator::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: rgba(239, 68, 68, 0.5);
+  animation: radarPing 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes radarPing {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.incident-card-item {
+  background: var(--color-surface);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-left: 4px solid #ef4444;
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.incident-card-item:hover {
+  border-color: rgba(239, 68, 68, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.12);
+}
+
+.row-security-violation {
+  background-color: rgba(239, 68, 68, 0.06) !important;
+  border-left: 3px solid #ef4444 !important;
+}
+
+[data-theme='dark'] .row-security-violation {
+  background-color: rgba(239, 68, 68, 0.12) !important;
+}
+
+.badge-incident-warning {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #f87171;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  letter-spacing: 0.2px;
+}
+
+[data-theme='dark'] .badge-incident-warning {
+  background: rgba(153, 27, 27, 0.4);
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.5);
+}
+
+.incident-sound-btn {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.incident-sound-btn:hover {
+  background: var(--color-surface-subtle);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
 

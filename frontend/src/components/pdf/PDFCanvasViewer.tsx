@@ -270,13 +270,21 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
 
   // 2. Block PrintScreen, Snipping Shortcuts, DevTools, Ctrl+P, Ctrl+S & Clear Clipboard
   useEffect(() => {
-    const triggerProtection = (msg: string) => {
+    const triggerProtection = (msg: string, violationAction: string = 'SECURITY_VIOLATION') => {
       // Clear clipboard to neutralize potential screen grabs
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText('Perpustakaan UMS — Perlindungan Hak Cipta Naskah Unpublish.');
         }
       } catch {}
+
+      // Send live incident telemetry to backend for Librarian Live Alert
+      api.reportSecurityIncident({
+        action: violationAction,
+        articleId,
+        docId,
+        articleTitle,
+      }).catch(() => {});
 
       // Temporarily blank/blur screen
       setIsWindowFocused(false);
@@ -296,7 +304,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       if (e.key === 'PrintScreen' || e.keyCode === 44) {
         e.preventDefault();
         e.stopPropagation();
-        triggerProtection('Tombol PrintScreen terdeteksi! Tangkapan layar dinonaktifkan demi perlindungan hak cipta.');
+        triggerProtection('Tombol PrintScreen terdeteksi! Tangkapan layar dinonaktifkan demi perlindungan hak cipta.', 'PRINTSCREEN_ATTEMPT');
         return;
       }
 
@@ -304,7 +312,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 's' || e.key === 'S' || e.key === '3' || e.key === '4' || e.key === '5')) {
         e.preventDefault();
         e.stopPropagation();
-        triggerProtection('Pintasan perekaman / tangkapan layar dinonaktifkan.');
+        triggerProtection('Pintasan perekaman / tangkapan layar dinonaktifkan.', 'SNIPPING_TOOL_ATTEMPT');
         return;
       }
 
@@ -312,7 +320,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P' || e.key === 's' || e.key === 'S' || e.key === 'u' || e.key === 'U')) {
         e.preventDefault();
         e.stopPropagation();
-        triggerProtection('Fitur pencetakan & pengunduhan dinonaktifkan.');
+        triggerProtection('Fitur pencetakan & pengunduhan dinonaktifkan.', 'PRINT_OR_SAVE_ATTEMPT');
         return;
       }
 
@@ -331,7 +339,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       ) {
         e.preventDefault();
         e.stopPropagation();
-        triggerProtection('Pemeriksaan elemen (DevTools) dinonaktifkan.');
+        triggerProtection('Pemeriksaan elemen (DevTools) dinonaktifkan.', 'DEVTOOLS_INSPECT_ATTEMPT');
         return;
       }
     };
@@ -339,7 +347,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'PrintScreen' || e.keyCode === 44) {
         e.preventDefault();
-        triggerProtection('Tangkapan layar dinonaktifkan.');
+        triggerProtection('Tangkapan layar dinonaktifkan.', 'PRINTSCREEN_ATTEMPT');
       }
     };
 
@@ -350,7 +358,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('keyup', handleKeyUp, true);
     };
-  }, []);
+  }, [articleId, docId, articleTitle, toggleFullscreen]);
 
   // Prevent background body scrolling while reader is open
   useEffect(() => {

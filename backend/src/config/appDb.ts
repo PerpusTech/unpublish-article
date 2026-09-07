@@ -59,9 +59,22 @@ export async function initAppDb(): Promise<void> {
       claimed_at DATETIME,
       expires_at DATETIME,
       extended_minutes INTEGER DEFAULT 0,
-      notes TEXT
+      notes TEXT,
+      incident_count INTEGER DEFAULT 0,
+      last_incident_at DATETIME,
+      last_incident_type TEXT
     )
   `);
+
+  try {
+    await query.run(`ALTER TABLE tokens ADD COLUMN incident_count INTEGER DEFAULT 0`);
+  } catch {}
+  try {
+    await query.run(`ALTER TABLE tokens ADD COLUMN last_incident_at DATETIME`);
+  } catch {}
+  try {
+    await query.run(`ALTER TABLE tokens ADD COLUMN last_incident_type TEXT`);
+  } catch {}
 
   await query.run(`CREATE INDEX IF NOT EXISTS idx_tokens_code ON tokens(token_code)`);
   await query.run(`CREATE INDEX IF NOT EXISTS idx_tokens_status ON tokens(status)`);

@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import QRCode from 'qrcode';
 import crypto from 'crypto';
 import { query } from '../config/appDb';
+import { AuditService } from './auditService';
 
 export interface TokenRecord {
   id: string;
@@ -18,6 +19,9 @@ export interface TokenRecord {
   extended_minutes: number;
   notes?: string;
   remaining_seconds?: number;
+  incident_count?: number;
+  last_incident_at?: string;
+  last_incident_type?: string;
 }
 
 export class TokenService {
@@ -441,5 +445,87 @@ export class TokenService {
     ]);
 
     return [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+  }
+
+  /**
+   * Records a security incident / violation attempt triggered by client telemetry
+   */
+  public static async recordIncident(params: {
+    tokenId: string;
+    action: string;
+    articleId?: number;
+    docId?: number;
+    articleTitle?: string;
+    ipAddress?: string;
+    userAgent?: string;
+  }): Promise<{ success: boolean; token?: TokenRecord }> {
+    try {
+      const token = await query.get<TokenRecord>('SELECT * FROM tokens WHERE id = ?', [params.tokenId]);
+      if (!token) return { success: false };
+
+      await query.run(
+        `UPDATE tokens SET 
+          incident_count = COALESCE(incident_count, 0) + 1,
+          last_incident_at = CURRENT_TIMESTAMP,
+          last_incident_type = ?
+         WHERE id = ?`,
+        [params.action, params.tokenId]
+      );
+
+      // Write to audit log as well
+      await AuditService.logAction({
+        tokenId: token.id,
+        patronNim: token.patron_nim,
+        patronName: token.patron_name,
+        action: 'SECURITY_INCIDENT' as any,
+        eprintId: params.articleId,
+        articleTitle: params.articleTitle
+          ? `[PELANGGARAN: ${params.action}] ${params.articleTitle}`
+          : `[PELANGGARAN: ${params.action}]`,
+        ipAddress: params.ipAddress || '127.0.0.1',
+        userAgent: params.userAgent,
+      });
+
+      const updated = await query.get<TokenRecord>('SELECT * FROM tokens WHERE id = ?', [params.tokenId]);
+      return { success: true, token: updated };
+    } catch (err) {
+      console.error('[TokenService] Error recording incident:', err);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Get latest live security incidents for admin real-time alert
+   */
+  public static async getRecentIncidents(limit = 10): Promise<any[]> {
+    try {
+      const rows = await query.all(
+        `SELECT 
+          a.id,
+          a.token_id,
+          a.patron_nim,
+          a.patron_name,
+          a.action,
+          a.article_title,
+          a.eprint_id,
+          a.ip_address,
+          a.user_agent,
+          a.created_at,
+          t.token_code,
+          t.status as token_status,
+          t.incident_count,
+          t.last_incident_type,
+          t.last_incident_at
+         FROM audit_logs a
+         LEFT JOIN tokens t ON a.token_id = t.id
+         WHERE a.action = 'SECURITY_INCIDENT' OR a.article_title LIKE '[PELANGGARAN%'
+         ORDER BY a.created_at DESC
+         LIMIT ?`,
+        [limit]
+      );
+      return rows;
+    } catch {
+      return [];
+    }
   }
 }

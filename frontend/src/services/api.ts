@@ -53,6 +53,9 @@ export interface TokenAdminItem {
   extended_minutes: number;
   remaining_seconds?: number;
   notes?: string;
+  incident_count?: number;
+  last_incident_at?: string;
+  last_incident_type?: string;
 }
 
 export interface AuditLogItem {
@@ -517,15 +520,58 @@ export const api = {
     return json;
   },
 
-  // === Analytics & Insights ===
-  async getAnalytics(): Promise<AnalyticsData> {
-    const res = await fetch(`${API_BASE}/admin/analytics`, {
+  // === Analytics ===
+  async getAnalytics(period?: string): Promise<AnalyticsData> {
+    const qs = new URLSearchParams();
+    if (period) qs.append('period', period);
+    const res = await fetch(`${API_BASE}/admin/analytics?${qs.toString()}`, {
       credentials: 'include',
       headers: getAdminHeaders(),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error?.message || 'Gagal memuat data analitik');
-    return json.data;
+    return json;
+  },
+
+  // === Security Incident Telemetry & Live Alerts ===
+  async reportSecurityIncident(params: {
+    action: string;
+    articleId?: number;
+    docId?: number;
+    articleTitle?: string;
+  }): Promise<{ success: boolean }> {
+    try {
+      const storedTokenId = localStorage.getItem('ums_patron_token_id') || '';
+      const res = await fetch(`${API_BASE}/patron/incident`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-uuid': getClientUuid(),
+          ...(storedTokenId ? { 'x-patron-token-id': storedTokenId } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          ...params,
+          tokenId: storedTokenId,
+        }),
+      });
+      return await res.json();
+    } catch {
+      return { success: false };
+    }
+  },
+
+  async getRecentIncidents(limit = 10): Promise<{ success: boolean; items: any[] }> {
+    try {
+      const res = await fetch(`${API_BASE}/admin/incidents/recent?limit=${limit}`, {
+        credentials: 'include',
+        headers: getAdminHeaders(),
+      });
+      const json = await res.json();
+      return json;
+    } catch {
+      return { success: false, items: [] };
+    }
   },
 };
 

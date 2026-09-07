@@ -168,9 +168,9 @@ export const App: React.FC = () => {
         }}
       >
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-          &copy; {new Date().getFullYear()} Perpustakaan Universitas Muhammadiyah Surakarta • Gedung Perpustakaan Kampus II UMS
+          &copy; {new Date().getFullYear()} UPT Perpustakaan dan Layanan Digital Universitas Muhammadiyah Surakarta
           <br />
-          Sistem Repositori Khusus Naskah Unpublish & Berkas Terbatas • Hak Cipta Dilindungi Undang-Undang
+          Sistem Repositori Khusus Naskah Unpublish & Berkas Terbatas
         </div>
       </footer>
 

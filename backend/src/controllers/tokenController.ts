@@ -410,4 +410,56 @@ export class TokenController {
     res.clearCookie('patron_token_id');
     res.json({ success: true, message: 'Sesi selesai.' });
   }
+
+  /**
+   * Patron telemetry reporting a security violation / incident
+   */
+  public static async reportIncident(req: Request, res: Response): Promise<void> {
+    try {
+      const { action, articleId, docId, articleTitle } = req.body;
+      const tokenId =
+        (req.headers['x-patron-token-id'] as string) ||
+        req.cookies?.patron_token_id ||
+        (req.query?.token_id as string) ||
+        req.body?.tokenId ||
+        '';
+
+      if (!tokenId) {
+        res.status(400).json({ error: { message: 'Token ID tidak ditemukan.' } });
+        return;
+      }
+
+      const clientIp = req.headers['x-forwarded-for']
+        ? (req.headers['x-forwarded-for'] as string).split(',')[0].trim()
+        : req.socket.remoteAddress || '127.0.0.1';
+      const userAgent = req.headers['user-agent'] || '';
+
+      const result = await TokenService.recordIncident({
+        tokenId,
+        action: action || 'SECURITY_VIOLATION',
+        articleId: articleId ? parseInt(articleId, 10) : undefined,
+        docId: docId ? parseInt(docId, 10) : undefined,
+        articleTitle,
+        ipAddress: clientIp,
+        userAgent,
+      });
+
+      res.json({ success: result.success });
+    } catch (err: any) {
+      res.status(500).json({ error: { message: 'Gagal mencatat insiden keamanan.' } });
+    }
+  }
+
+  /**
+   * Admin retrieves recent live incidents for real-time alerting
+   */
+  public static async getRecentIncidents(req: Request, res: Response): Promise<void> {
+    try {
+      const limit = parseInt((req.query.limit as string) || '10', 10);
+      const incidents = await TokenService.getRecentIncidents(limit);
+      res.json({ success: true, items: incidents });
+    } catch (err: any) {
+      res.status(500).json({ error: { message: 'Gagal memuat daftar insiden.' } });
+    }
+  }
 }

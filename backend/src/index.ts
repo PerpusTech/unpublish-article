@@ -55,6 +55,7 @@ api.post('/admin/tokens/:id/revoke', requireAdminAuth, TokenController.revokeTok
 api.get('/admin/audit-logs', requireAdminAuth, AuditController.listLogs);
 api.get('/admin/audit-logs/export', requireAdminAuth, AuditController.exportCsv);
 api.get('/admin/analytics', requireAdminAuth, AnalyticsController.getAnalytics);
+api.get('/admin/incidents/recent', requireAdminAuth, TokenController.getRecentIncidents);
 
 // ================= USER MANAGEMENT ROUTES =================
 api.get('/admin/users', requireAdminAuth, UserController.listUsers);
@@ -63,10 +64,11 @@ api.post('/admin/users', requireAdminAuth, UserController.createUser);
 api.put('/admin/users/:email', requireAdminAuth, UserController.updateUser);
 api.delete('/admin/users/:email', requireAdminAuth, UserController.deleteUser);
 
-// ================= PATRON SESSION ROUTES =================
+// ================= PATRON SESSION & TELEMETRY ROUTES =================
 api.post('/patron/session/claim', TokenController.claimToken);
 api.get('/patron/session/status', TokenController.getSessionStatus);
 api.post('/patron/session/logout', TokenController.logout);
+api.post('/patron/incident', TokenController.reportIncident);
 
 // ================= PROTECTED ARTICLE & BROWSE ROUTES =================
 api.get('/articles', requirePatronSession, ArticleController.listArticles);
