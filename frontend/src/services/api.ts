@@ -1,0 +1,390 @@
+const API_BASE = '/api/v1';
+
+// Client UUID stored in localStorage for fingerprinting
+export function getClientUuid(): string {
+  let uuid = localStorage.getItem('ums_client_uuid');
+  if (!uuid) {
+    uuid = 'client_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+    localStorage.setItem('ums_client_uuid', uuid);
+  }
+  return uuid;
+}
+
+export interface PatronSession {
+  id: string;
+  token_code: string;
+  patron_name: string;
+  patron_nim: string;
+  expires_at: string;
+  remaining_seconds: number;
+}
+
+export interface ArticleItem {
+  eprintid: number;
+  title: string;
+  abstract: string;
+  date_year: number;
+  type: string;
+  eprint_status: 'archive' | 'buffer' | 'inbox' | 'deletion';
+  creators: string[];
+  department?: string;
+  documents?: {
+    docid: number;
+    filename: string;
+    filesize: number;
+    format: string;
+    security: string;
+  }[];
+}
+
+export interface TokenAdminItem {
+  id: string;
+  token_code: string;
+  patron_name: string;
+  patron_nim: string;
+  duration_minutes: number;
+  status: 'PENDING' | 'ACTIVE' | 'EXPIRED' | 'EXPIRED_UNCLAIMED' | 'REVOKED';
+  created_at: string;
+  claimed_at?: string;
+  expires_at?: string;
+  extended_minutes: number;
+  remaining_seconds?: number;
+  notes?: string;
+}
+
+export interface AuditLogItem {
+  id: string;
+  patron_nim: string;
+  patron_name: string;
+  action: string;
+  eprint_id?: number;
+  article_title?: string;
+  eprint_status?: string;
+  ip_address: string;
+  user_agent?: string;
+  created_at: string;
+}
+
+export interface UserItem {
+  email: string;
+  name: string;
+  role: 'ADMIN' | 'USER' | 'SUPER_ADMIN';
+  is_active: number;
+  last_login_at?: string;
+  created_at?: string;
+  sso_attributes?: string;
+}
+
+export function getAdminHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = { ...extra };
+  const token = localStorage.getItem('ums_admin_token');
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+export const api = {
+  // === Patron Session ===
+  async claimToken(tokenCode: string): Promise<{ success: boolean; session?: PatronSession; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/patron/session/claim`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-uuid': getClientUuid(),
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          tokenCode,
+          clientUuid: getClientUuid(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error?.message || 'Gagal mengaktivasi token' };
+      }
+      if (data.session) {
+        localStorage.setItem('ums_patron_session', JSON.stringify(data.session));
+        localStorage.setItem('ums_patron_token_id', data.session.id);
+      }
+      return { success: true, session: data.session };
+    } catch (err: any) {
+      return { success: false, error: 'Terjadi kesalahan jaringan.' };
+    }
+  },
+
+  async getSessionStatus(): Promise<{ isActive: boolean; session?: PatronSession; reason?: string }> {
+    try {
+      const storedTokenId = localStorage.getItem('ums_patron_token_id') || '';
+      const qs = new URLSearchParams();
+      if (storedTokenId) qs.append('token_id', storedTokenId);
+
+      const res = await fetch(`${API_BASE}/patron/session/status?${qs.toString()}`, {
+        headers: {
+          'x-client-uuid': getClientUuid(),
+          ...(storedTokenId ? { 'x-patron-token-id': storedTokenId } : {})
+        },
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (data.isActive && data.session) {
+        localStorage.setItem('ums_patron_session', JSON.stringify(data.session));
+        localStorage.setItem('ums_patron_token_id', data.session.id);
+      } else {
+        localStorage.removeItem('ums_patron_session');
+        localStorage.removeItem('ums_patron_token_id');
+      }
+      return data;
+    } catch {
+      return { isActive: false };
+    }
+  },
+
+  async logoutPatron(): Promise<void> {
+    try {
+      await fetch(`${API_BASE}/patron/session/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } finally {
+      localStorage.removeItem('ums_patron_session');
+      localStorage.removeItem('ums_patron_token_id');
+    }
+  },
+
+  // === Articles Catalog ===
+  async searchArticles(params: {
+    q?: string;
+    status?: 'ALL' | 'UNPUBLISH' | 'PUBLISH';
+    year?: number;
+    page?: number;
+    limit?: number;
+  }): Promise<{ items: ArticleItem[]; total: number; totalPages: number }> {
+    const qs = new URLSearchParams();
+    if (params.q) qs.append('q', params.q);
+    if (params.status) qs.append('status', params.status);
+    if (params.year) qs.append('year', params.year.toString());
+    if (params.page) qs.append('page', params.page.toString());
+    if (params.limit) qs.append('limit', params.limit.toString());
+
+    const storedTokenId = localStorage.getItem('ums_patron_token_id') || '';
+    if (storedTokenId) qs.append('token_id', storedTokenId);
+
+    const res = await fetch(`${API_BASE}/articles?${qs.toString()}`, {
+      credentials: 'include',
+      headers: {
+        'x-client-uuid': getClientUuid(),
+        ...(storedTokenId ? { 'x-patron-token-id': storedTokenId } : {})
+      },
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || 'Gagal memuat katalog artikel');
+    }
+    return await res.json();
+  },
+
+  async getArticle(id: number): Promise<ArticleItem> {
+    const storedTokenId = localStorage.getItem('ums_patron_token_id') || '';
+    const qs = new URLSearchParams();
+    if (storedTokenId) qs.append('token_id', storedTokenId);
+
+    const res = await fetch(`${API_BASE}/articles/${id}?${qs.toString()}`, {
+      credentials: 'include',
+      headers: {
+        'x-client-uuid': getClientUuid(),
+        ...(storedTokenId ? { 'x-patron-token-id': storedTokenId } : {})
+      },
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || 'Artikel tidak ditemukan');
+    }
+    const data = await res.json();
+    return data.article;
+  },
+
+  getDocumentStreamUrl(articleId: number, docId: number, tokenId?: string): string {
+    const uuid = getClientUuid();
+    const storedTokenId = tokenId || localStorage.getItem('ums_patron_token_id') || '';
+    const qs = new URLSearchParams();
+    if (uuid) qs.append('client_uuid', uuid);
+    if (storedTokenId) qs.append('token_id', storedTokenId);
+    return `${API_BASE}/articles/${articleId}/documents/${docId}/view?${qs.toString()}`;
+  },
+
+  // === Admin Authentication & Tokens ===
+  async devLogin(email?: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/auth/dev-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    if (data?.token) {
+      localStorage.setItem('ums_admin_token', data.token);
+    }
+    return data;
+  },
+
+  async getAdminMe(): Promise<any> {
+    const res = await fetch(`${API_BASE}/auth/me`, {
+      credentials: 'include',
+      headers: getAdminHeaders(),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  },
+
+  async adminLogout(): Promise<void> {
+    localStorage.removeItem('ums_admin_token');
+    await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
+  },
+
+  async createToken(data: {
+    patronName: string;
+    patronNim: string;
+    durationMinutes: number;
+    notes?: string;
+  }): Promise<{ token: TokenAdminItem; qrDataUrl: string }> {
+    const res = await fetch(`${API_BASE}/admin/tokens`, {
+      method: 'POST',
+      headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'Gagal membuat token');
+    return json;
+  },
+
+  async listTokens(filter?: { status?: string; search?: string }): Promise<TokenAdminItem[]> {
+    const qs = new URLSearchParams();
+    if (filter?.status) qs.append('status', filter.status);
+    if (filter?.search) qs.append('search', filter.search);
+
+    const res = await fetch(`${API_BASE}/admin/tokens?${qs.toString()}`, {
+      credentials: 'include',
+      headers: getAdminHeaders(),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'Gagal memuat token');
+    return json.tokens;
+  },
+
+  async extendToken(id: string, minutes: number): Promise<void> {
+    const res = await fetch(`${API_BASE}/admin/tokens/${id}/extend`, {
+      method: 'POST',
+      headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
+      body: JSON.stringify({ minutes }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || 'Gagal memperpanjang sesi');
+    }
+  },
+
+  async revokeToken(id: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/admin/tokens/${id}/revoke`, {
+      method: 'POST',
+      headers: getAdminHeaders(),
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || 'Gagal mencabut token');
+    }
+  },
+
+  async getAuditLogs(params?: { search?: string; nim?: string; action?: string; page?: number }): Promise<{
+    logs: AuditLogItem[];
+    total: number;
+    totalPages: number;
+  }> {
+    const qs = new URLSearchParams();
+    if (params?.search) qs.append('search', params.search);
+    if (params?.nim) qs.append('nim', params.nim);
+    if (params?.action) qs.append('action', params.action);
+    if (params?.page) qs.append('page', params.page.toString());
+
+    const res = await fetch(`${API_BASE}/admin/audit-logs?${qs.toString()}`, {
+      credentials: 'include',
+      headers: getAdminHeaders(),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'Gagal memuat audit log');
+    return json;
+  },
+
+  getAuditExportUrl(search?: string): string {
+    const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+    return `${API_BASE}/admin/audit-logs/export${qs}`;
+  },
+
+  // === User Management ===
+  async listUsers(params?: { search?: string; role?: string }): Promise<UserItem[]> {
+    const qs = new URLSearchParams();
+    if (params?.search) qs.append('search', params.search);
+    if (params?.role && params.role !== 'ALL') qs.append('role', params.role);
+
+    const res = await fetch(`${API_BASE}/admin/users?${qs.toString()}`, {
+      credentials: 'include',
+      headers: getAdminHeaders(),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'Gagal memuat daftar pengguna');
+    return json.users;
+  },
+
+  async createUser(data: { email: string; name: string; role: 'ADMIN' | 'USER' }): Promise<{ success: boolean; user: UserItem; message?: string }> {
+    const res = await fetch(`${API_BASE}/admin/users`, {
+      method: 'POST',
+      headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'Gagal menambahkan pengguna');
+    return json;
+  },
+
+  async updateUser(
+    email: string,
+    data: { role?: 'ADMIN' | 'USER'; is_active?: number; name?: string }
+  ): Promise<{ success: boolean; user: UserItem; message?: string }> {
+    const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(email)}`, {
+      method: 'PUT',
+      headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'Gagal memperbarui pengguna');
+    return json;
+  },
+
+  async deleteUser(email: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(email)}`, {
+      method: 'DELETE',
+      headers: getAdminHeaders(),
+      credentials: 'include',
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'Gagal menghapus pengguna');
+    return json;
+  },
+
+  // === CAS SSO (auth.ums.ac.id) ===
+  async getCasLoginUrl(): Promise<{ url: string }> {
+    const res = await fetch(`${API_BASE}/auth/cas/login`, { credentials: 'include' });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'Gagal menyiapkan sesi SSO');
+    return json;
+  },
+};

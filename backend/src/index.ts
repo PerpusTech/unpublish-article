@@ -1,0 +1,111 @@
+import express from 'express';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import { ENV } from './config/env';
+import { initAppDb } from './config/appDb';
+import { AuthController } from './controllers/authController';
+import { TokenController } from './controllers/tokenController';
+import { ArticleController } from './controllers/articleController';
+import { AuditController } from './controllers/auditController';
+import { UserController } from './controllers/userController';
+import { requireAdminAuth } from './middlewares/adminAuth';
+import { requirePatronSession } from './middlewares/patronAuth';
+import { TokenService } from './services/tokenService';
+
+const app = express();
+
+// Middleware
+app.use(express.json());
+app.use(cookieParser());
+app.use(
+  cors({
+    origin: true, // Allow frontend origin
+    credentials: true,
+  })
+);
+
+// Health check endpoint for Docker & monitoring
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    mockEprints: ENV.EPRINTS_USE_MOCK,
+  });
+});
+
+const api = express.Router();
+
+// ================= ADMIN & AUTH ROUTES =================
+api.post('/auth/dev-login', AuthController.devLogin);
+api.get('/auth/google', AuthController.getGoogleAuthUrl);
+api.get('/auth/cas/login', AuthController.casLogin);
+api.get('/auth/cas/callback', AuthController.casCallback);
+api.get('/auth/me', requireAdminAuth, AuthController.me);
+api.post('/auth/logout', AuthController.logout);
+
+api.post('/admin/tokens', requireAdminAuth, TokenController.createToken);
+api.get('/admin/tokens', requireAdminAuth, TokenController.listTokens);
+api.post('/admin/tokens/:id/extend', requireAdminAuth, TokenController.extendToken);
+api.post('/admin/tokens/:id/revoke', requireAdminAuth, TokenController.revokeToken);
+
+api.get('/admin/audit-logs', requireAdminAuth, AuditController.listLogs);
+api.get('/admin/audit-logs/export', requireAdminAuth, AuditController.exportCsv);
+
+// ================= USER MANAGEMENT ROUTES =================
+api.get('/admin/users', requireAdminAuth, UserController.listUsers);
+api.post('/admin/users', requireAdminAuth, UserController.createUser);
+api.put('/admin/users/:email', requireAdminAuth, UserController.updateUser);
+api.delete('/admin/users/:email', requireAdminAuth, UserController.deleteUser);
+
+// ================= PATRON SESSION ROUTES =================
+api.post('/patron/session/claim', TokenController.claimToken);
+api.get('/patron/session/status', TokenController.getSessionStatus);
+api.post('/patron/session/logout', TokenController.logout);
+
+// ================= PROTECTED ARTICLE ROUTES =================
+api.get('/articles', requirePatronSession, ArticleController.listArticles);
+api.get('/articles/:id', requirePatronSession, ArticleController.getArticle);
+api.get('/articles/:id/documents/:docId/view', requirePatronSession, ArticleController.streamDocument);
+
+app.use('/api/v1', api);
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Endpoint tidak ditemukan.' } });
+});
+
+// Periodic token expiration maintenance (every 60s)
+setInterval(async () => {
+  try {
+    const activeTokens = await TokenService.listTokens({ status: 'ACTIVE' });
+    const now = new Date().getTime();
+    for (const t of activeTokens) {
+      if (t.expires_at && now >= new Date(t.expires_at).getTime()) {
+        await TokenService.getSessionStatus(t.id, t.device_fingerprint || '');
+      }
+    }
+  } catch (err) {
+    console.error('[Maintenance] Error running token cleaner:', err);
+  }
+}, 60000);
+
+// Initialize DB and start server
+async function bootstrap() {
+  try {
+    await initAppDb();
+    app.listen(ENV.PORT, '0.0.0.0', () => {
+      console.log(`=======================================================`);
+      console.log(` EPrints Unpublish Viewer Backend - Perpustakaan UMS`);
+      console.log(` Status: Running on port ${ENV.PORT}`);
+      console.log(` Environment: ${ENV.NODE_ENV}`);
+      console.log(` Mock EPrints: ${ENV.EPRINTS_USE_MOCK ? 'ENABLED' : 'DISABLED'}`);
+      console.log(` Documents Path: ${ENV.EPRINTS_DOCUMENTS_PATH}`);
+      console.log(`=======================================================`);
+    });
+  } catch (err) {
+    console.error('[FATAL] Failed to bootstrap server:', err);
+    process.exit(1);
+  }
+}
+
+bootstrap();
