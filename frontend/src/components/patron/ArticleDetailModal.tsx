@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { api, ArticleItem } from '../../services/api';
 
 interface ArticleDetailModalProps {
@@ -14,6 +15,15 @@ export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({
 }) => {
   const [currentArticle, setCurrentArticle] = useState<ArticleItem | null>(article);
   const [loadingDocs, setLoadingDocs] = useState(false);
+
+  // Prevent background body scrolling while modal is open
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
 
   useEffect(() => {
     if (!article) {
@@ -46,7 +56,7 @@ export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({
   const isPublish = currentArticle.eprint_status === 'archive';
   const docs = currentArticle.documents || [];
 
-  return (
+  return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div
         className="modal-dialog large animated-modal"
@@ -311,7 +321,8 @@ export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

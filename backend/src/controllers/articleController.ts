@@ -115,8 +115,6 @@ export class ArticleController {
         return;
       }
 
-      const filePath = await PdfStreamService.resolveDocumentPath(id, docId);
-
       // Record Audit Log for PDF Reading
       if (req.patron) {
         const ip = getHeader(req.headers['x-forwarded-for']) || req.socket.remoteAddress || '127.0.0.1';
@@ -133,7 +131,7 @@ export class ArticleController {
         });
       }
 
-      PdfStreamService.streamPdf(filePath, req, res);
+      await PdfStreamService.pipeDocumentStream(article, docId, req, res);
     } catch (err: any) {
       console.error('[ArticleController] Stream error:', err);
       res.status(500).json({

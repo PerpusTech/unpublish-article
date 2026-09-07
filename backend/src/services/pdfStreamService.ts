@@ -1,29 +1,33 @@
-import fs from 'fs';
-import path from 'path';
 import http from 'http';
 import https from 'https';
 import { Response, Request } from 'express';
 import { ENV } from '../config/env';
-import { EPrintsService } from './eprintsService';
-import { createSimplePdf } from '../utils/pdfGenerator';
-import { DocumentItem } from '../config/eprintsDb';
-
-import { mysqlPool } from '../config/eprintsDb';
+import { createSimplePdfBuffer } from '../utils/pdfGenerator';
+import { EPrintItem, DocumentItem, mysqlPool } from '../config/eprintsDb';
 
 export class PdfStreamService {
   /**
-   * Downloads authentic PDF document directly from live EPrints repository server
+   * Directly pipes authentic PDF document from EPrints repository server to client response.
+   * Zero disk storage usage: operates entirely in memory / streaming network pipe.
    */
-  private static async fetchFromEPrintsServer(
-    eprintId: number,
-    doc: DocumentItem | undefined,
-    targetFile: string
-  ): Promise<boolean> {
-    if (!doc) return false;
+  public static async pipeDocumentStream(
+    article: EPrintItem,
+    docId: number,
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    const eprintId = article.eprintid;
+    const doc = article.documents?.find((d: DocumentItem) => d.docid === docId) || article.documents?.[0];
+
+    if (!doc) {
+      this.sendFallbackPdf(article, eprintId, res, 'Dokumen digital tidak terdaftar pada naskah ini.');
+      return;
+    }
+
     let filename = doc.main || doc.filename;
     let pos = doc.pos;
 
-    // If pos or main is missing, query live MySQL table document
+    // Look up pos & main from MySQL if missing
     if ((!pos || !filename) && mysqlPool && doc.docid) {
       try {
         const [rows]: any = await mysqlPool.query(
@@ -39,9 +43,12 @@ export class PdfStreamService {
       }
     }
 
-    if (!filename) return false;
-    const effectivePos = pos || 1;
+    if (!filename) {
+      this.sendFallbackPdf(article, eprintId, res, 'Nama berkas naskah tidak ditemukan.');
+      return;
+    }
 
+    const effectivePos = pos || 1;
     const urls = [
       `${ENV.EPRINTS_BASE_URL}/${eprintId}/${effectivePos}/${encodeURIComponent(filename)}`,
       `${ENV.EPRINTS_BASE_URL}/${eprintId}/${effectivePos}/${filename}`,
@@ -58,157 +65,132 @@ export class PdfStreamService {
       headers['Authorization'] = 'Basic ' + Buffer.from(auth).toString('base64');
     }
 
-    const downloadUrl = async (url: string, redirectCount = 0): Promise<boolean> => {
+    // Forward Range header if patron's viewer requested partial chunks
+    if (req.headers.range) {
+      headers['Range'] = req.headers.range;
+    }
+
+    const pipeFromUrl = async (url: string, redirectCount = 0): Promise<boolean> => {
       if (redirectCount > 3) return false;
       return new Promise<boolean>((resolve) => {
         try {
           const client = url.startsWith('https') ? https : http;
-          const req = client.get(
+          const eprintsReq = client.get(
             url,
             {
               headers,
               rejectUnauthorized: false,
               timeout: 15000,
             },
-            (res) => {
-              if (res.statusCode === 301 || res.statusCode === 302) {
-                const redirectUrl = res.headers.location;
+            (eprintsRes: http.IncomingMessage) => {
+              if (eprintsRes.statusCode === 301 || eprintsRes.statusCode === 302) {
+                const redirectUrl = eprintsRes.headers.location;
                 if (redirectUrl) {
                   const nextUrl = redirectUrl.startsWith('http')
                     ? redirectUrl
                     : `${ENV.EPRINTS_BASE_URL}${redirectUrl}`;
-                  res.resume();
-                  return resolve(downloadUrl(nextUrl, redirectCount + 1));
+                  eprintsRes.resume();
+                  return resolve(pipeFromUrl(nextUrl, redirectCount + 1));
                 }
               }
 
-              if (res.statusCode === 200) {
-                const cType = res.headers['content-type'] || '';
+              if (eprintsRes.statusCode === 200 || eprintsRes.statusCode === 206) {
+                const cType = eprintsRes.headers['content-type'] || '';
                 if (cType.includes('pdf') || cType.includes('octet-stream') || !cType) {
-                  fs.mkdirSync(path.dirname(targetFile), { recursive: true });
-                  const fileStream = fs.createWriteStream(targetFile);
-                  res.pipe(fileStream);
-                  fileStream.on('finish', () => {
-                    fileStream.close();
-                    const downloadedSize = fs.statSync(targetFile).size;
-                    console.log(`[PdfStreamService] Successfully retrieved real PDF from EPrints: ${url} (${downloadedSize} bytes)`);
+                  // Set HTTP response status (200 OK or 206 Partial Content)
+                  res.status(eprintsRes.statusCode);
+
+                  // Security & Protected Streaming Headers
+                  res.setHeader('Content-Type', 'application/pdf');
+                  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(filename || 'document.pdf')}"`);
+                  res.setHeader('X-Content-Type-Options', 'nosniff');
+                  res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+                  res.setHeader('Pragma', 'no-cache');
+                  res.setHeader('Expires', '0');
+                  res.setHeader('Accept-Ranges', 'bytes');
+
+                  if (eprintsRes.headers['content-range']) {
+                    res.setHeader('Content-Range', eprintsRes.headers['content-range']);
+                  }
+                  if (eprintsRes.headers['content-length']) {
+                    res.setHeader('Content-Length', eprintsRes.headers['content-length']);
+                  }
+
+                  // Zero-disk on-the-fly streaming pipe
+                  eprintsRes.pipe(res);
+
+                  eprintsRes.on('end', () => {
                     resolve(true);
                   });
-                  fileStream.on('error', (err) => {
-                    console.warn(`[PdfStreamService] Write error for ${targetFile}:`, err.message);
+                  eprintsRes.on('error', (err) => {
+                    console.warn(`[PdfStreamService] Stream error while piping ${url}:`, err.message);
                     resolve(false);
                   });
                   return;
                 }
               }
 
-              if (res.statusCode === 401) {
-                console.warn(`[PdfStreamService] EPrints server requires authentication (401) for ${url}. Configure EPRINTS_HTTP_USER & EPRINTS_HTTP_PASSWORD.`);
+              if (eprintsRes.statusCode === 401) {
+                console.warn(`[PdfStreamService] EPrints server requires authorization for ${url}`);
               } else {
-                console.warn(`[PdfStreamService] EPrints server returned status ${res.statusCode} for ${url}`);
+                console.warn(`[PdfStreamService] EPrints responded ${eprintsRes.statusCode} for ${url}`);
               }
-              res.resume();
+              eprintsRes.resume();
               resolve(false);
             }
           );
 
-          req.on('timeout', () => {
-            req.destroy();
+          eprintsReq.on('timeout', () => {
+            eprintsReq.destroy();
             resolve(false);
           });
-          req.on('error', (err) => {
-            console.warn(`[PdfStreamService] Network error fetching ${url}:`, err.message);
+          eprintsReq.on('error', (err) => {
+            console.warn(`[PdfStreamService] Connection error fetching ${url}:`, err.message);
             resolve(false);
           });
         } catch (e: any) {
-          console.warn(`[PdfStreamService] Exception fetching ${url}:`, e.message);
+          console.warn(`[PdfStreamService] Exception connecting to ${url}:`, e.message);
           resolve(false);
         }
       });
     };
 
     for (const url of urls) {
-      const success = await downloadUrl(url);
-      if (success) return true;
+      const success = await pipeFromUrl(url);
+      if (success) return;
     }
 
-    return false;
+    // Fallback: If authentic document could not be retrieved from EPrints live server
+    this.sendFallbackPdf(
+      article,
+      eprintId,
+      res,
+      'Berkas fisik tidak dapat dijangkau di server arsip EPrints saat ini.'
+    );
   }
 
   /**
-   * Resolves physical document file path on disk, retrieving from EPrints or creating sample if missing
+   * Streams an institutional notice PDF created in-memory (Zero Disk Write)
    */
-  public static async resolveDocumentPath(eprintId: number, docId: number): Promise<string> {
-    const article = await EPrintsService.getArticleById(eprintId);
-    const doc = article?.documents?.find((d) => d.docid === docId) || article?.documents?.[0];
+  private static sendFallbackPdf(
+    article: EPrintItem | null,
+    eprintId: number,
+    res: Response,
+    reason: string
+  ): void {
+    const title = article ? article.title : `Artikel Repositori #${eprintId}`;
+    const author = article && article.creators.length > 0 ? article.creators.join(', ') : 'Peneliti UMS';
+    const year = article ? article.date_year.toString() : '2025';
+    const statusNote = `DIBATASI: ${reason}`;
 
-    const targetDir = path.join(ENV.EPRINTS_DOCUMENTS_PATH, eprintId.toString());
-    const targetFile = path.join(targetDir, `doc_${docId}.pdf`);
-    const namedFile = doc?.filename ? path.join(targetDir, doc.filename) : null;
+    const pdfBuffer = createSimplePdfBuffer(title, author, year, statusNote);
 
-    // 1. Check if already downloaded on disk (by docId or filename)
-    if (fs.existsSync(targetFile) && fs.statSync(targetFile).size > 2000) {
-      return targetFile;
-    }
-    if (namedFile && fs.existsSync(namedFile) && fs.statSync(namedFile).size > 2000) {
-      return namedFile;
-    }
-
-    // 2. Attempt to fetch authentic full-text PDF directly from EPrints server
-    const fetched = await this.fetchFromEPrintsServer(eprintId, doc, targetFile);
-    if (fetched && fs.existsSync(targetFile) && fs.statSync(targetFile).size > 2000) {
-      return targetFile;
-    }
-
-    // 3. Fallback: If authentic file cannot be fetched, inform pustakawan via generated institutional sheet
-    if (!fs.existsSync(targetFile)) {
-      const title = article ? article.title : `Artikel Repositori #${eprintId}`;
-      const author = article && article.creators.length > 0 ? article.creators.join(', ') : 'Peneliti UMS';
-      const year = article ? article.date_year.toString() : '2025';
-      const statusNote = article && article.eprint_status !== 'archive'
-        ? 'DIBATASI: Karya Ilmiah Belum Terbit (Akses Khusus Perpustakaan UMS)'
-        : 'TERBIT: Repositori Publik UMS';
-
-      createSimplePdf(targetFile, title, author, year, statusNote);
-    }
-
-    return targetFile;
-  }
-
-  /**
-   * Streams PDF file with HTTP Range support and strict no-download headers
-   */
-  public static streamPdf(filePath: string, req: Request, res: Response): void {
-    const stat = fs.statSync(filePath);
-    const fileSize = stat.size;
-    const range = req.headers.range;
-
+    res.status(200);
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'inline; filename="document.pdf"');
+    res.setHeader('Content-Disposition', 'inline; filename="notice.pdf"');
+    res.setHeader('Content-Length', pdfBuffer.length);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-
-    if (range) {
-      // Parse Range header (e.g. "bytes=0-1024")
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      const chunkSize = end - start + 1;
-
-      res.status(206);
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
-      res.setHeader('Accept-Ranges', 'bytes');
-      res.setHeader('Content-Length', chunkSize);
-
-      const stream = fs.createReadStream(filePath, { start, end });
-      stream.pipe(res);
-    } else {
-      res.setHeader('Content-Length', fileSize);
-      res.setHeader('Accept-Ranges', 'bytes');
-      const stream = fs.createReadStream(filePath);
-      stream.pipe(res);
-    }
+    res.send(pdfBuffer);
   }
 }

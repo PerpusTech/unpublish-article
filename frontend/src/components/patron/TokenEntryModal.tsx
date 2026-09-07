@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { api, PatronSession } from '../../services/api';
 
 interface TokenEntryModalProps {
@@ -11,6 +12,15 @@ export const TokenEntryModal: React.FC<TokenEntryModalProps> = ({ isOpen, onClos
   const [tokenCode, setTokenCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -35,7 +45,7 @@ export const TokenEntryModal: React.FC<TokenEntryModalProps> = ({ isOpen, onClos
     }
   };
 
-  return (
+  return createPortal(
     <div className="modal-backdrop">
       <div className="modal-dialog">
         <div className="modal-header">
@@ -87,6 +97,7 @@ export const TokenEntryModal: React.FC<TokenEntryModalProps> = ({ isOpen, onClos
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

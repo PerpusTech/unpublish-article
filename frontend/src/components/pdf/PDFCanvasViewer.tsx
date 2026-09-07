@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { api, PatronSession } from '../../services/api';
 
 interface PDFCanvasViewerProps {
@@ -33,6 +34,15 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     ? `Perpustakaan UMS • ${currentSession.patron_nim} - ${currentSession.patron_name} • Token: ${currentSession.token_code} • ${new Date().toLocaleDateString('id-ID')}`
     : `Perpustakaan UMS • Akses Baca Terbatas • ${new Date().toLocaleDateString('id-ID')}`;
 
+  // Prevent background body scrolling while reader is open
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
   // Anti-tamper: disable context menu, Ctrl+P, Ctrl+S
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -46,10 +56,19 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  return (
+  return createPortal(
     <div
       className="modal-backdrop"
-      style={{ padding: 0, zIndex: 2000 }}
+      style={{
+        padding: 0,
+        zIndex: 9999,
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        overflow: 'hidden',
+      }}
       onContextMenu={(e) => e.preventDefault()}
     >
       <div
@@ -59,6 +78,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
           display: 'flex',
           flexDirection: 'column',
           backgroundColor: '#1e293b',
+          overflow: 'hidden',
         }}
       >
         {/* PDF Reader Toolbar */}
@@ -132,10 +152,9 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
           style={{
             flex: 1,
             position: 'relative',
-            overflow: 'auto',
+            overflow: 'hidden',
             display: 'flex',
             justifyContent: 'center',
-            padding: '24px 0',
             backgroundColor: '#334155',
           }}
         >
@@ -143,11 +162,10 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
             style={{
               position: 'relative',
               width: `${zoom}%`,
-              maxWidth: '960px',
-              minHeight: '100%',
+              maxWidth: '1200px',
+              height: '100%',
               backgroundColor: '#ffffff',
               boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)',
-              borderRadius: 4,
               overflow: 'hidden',
             }}
           >
@@ -158,7 +176,6 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
               style={{
                 width: '100%',
                 height: '100%',
-                minHeight: '88vh',
                 border: 'none',
                 display: 'block',
               }}
@@ -218,6 +235,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
           Perpustakaan Universitas Muhammadiyah Surakarta — Seluruh aktivitas membaca naskah tercatat dalam Log Audit institusional (NIM: {session?.patron_nim || 'Guest'}).
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

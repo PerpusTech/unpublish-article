@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { api, TokenAdminItem } from '../../services/api';
 
 interface TokenGeneratorModalProps {
@@ -20,6 +21,15 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({ isOpen
     token: TokenAdminItem;
     qrDataUrl: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -72,7 +82,7 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({ isOpen
     { value: 240, label: '4 Jam', sub: '240 menit' },
   ];
 
-  return (
+  return createPortal(
     <div className="modal-backdrop">
       <div className="modal-dialog" style={{ maxWidth: 520 }}>
         <div className="modal-header">
@@ -337,7 +347,8 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({ isOpen
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

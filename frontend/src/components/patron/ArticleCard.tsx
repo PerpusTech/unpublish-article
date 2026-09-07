@@ -82,68 +82,6 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect, onO
         </a>
       </h3>
 
-      {/* Zero-Scroll Direct Reading Action Banner */}
-      {article.documents && article.documents.length > 0 && onOpenPdf && (
-        <div
-          style={{
-            margin: '10px 0 12px',
-            backgroundColor: 'rgba(30, 58, 138, 0.06)',
-            border: '1px solid var(--color-primary-light, #93c5fd)',
-            borderRadius: 'var(--radius-md, 8px)',
-            padding: '9px 14px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 8,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
-            <span
-              style={{
-                backgroundColor: '#dc2626',
-                color: '#fff',
-                fontSize: 11,
-                fontWeight: 800,
-                padding: '2px 7px',
-                borderRadius: 4,
-                letterSpacing: '0.5px',
-              }}
-            >
-              PDF
-            </span>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--color-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {article.documents[0].filename}
-              {article.documents.length > 1 && (
-                <span style={{ color: 'var(--color-text-muted)', fontWeight: 400, marginLeft: 4 }}>
-                  (+{article.documents.length - 1} berkas lainnya)
-                </span>
-              )}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={() => onOpenPdf(article.eprintid, article.documents![0].docid, article.title)}
-            style={{
-              fontWeight: 700,
-              fontSize: 12.5,
-              padding: '6px 16px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              boxShadow: '0 2px 4px rgba(30, 58, 138, 0.2)',
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-            <span>Buka Naskah (PDF Langsung)</span>
-          </button>
-        </div>
-      )}
 
       {/* Authors & Department */}
       <div className="author-chip-list">
@@ -214,30 +152,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect, onO
           </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {article.documents && article.documents.length > 0 && onOpenPdf && (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => onOpenPdf(article.eprintid, article.documents![0].docid, article.title)}
-              style={{
-                fontWeight: 700,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 14px',
-                boxShadow: '0 1px 3px rgba(30, 58, 138, 0.2)',
-              }}
-              title="Buka kanvas baca secara instan tanpa perlu membuka rincian modal"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-              <span>Buka Kanvas Baca (PDF)</span>
-            </button>
-          )}
-
+        <div>
           <button
             type="button"
             className="btn btn-secondary btn-sm"
@@ -250,7 +165,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect, onO
               padding: '6px 14px',
             }}
           >
-            <span>Detail Naskah</span>
+            <span>Detail & Abstrak Naskah</span>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="5" y1="12" x2="19" y2="12" />
               <polyline points="12 5 19 12 12 19" />

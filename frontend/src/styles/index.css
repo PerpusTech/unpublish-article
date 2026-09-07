@@ -212,16 +212,16 @@ a:hover {
 @keyframes pageFadeSlide {
   0% {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(8px);
   }
   100% {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
 .page-transition {
-  animation: pageFadeSlide 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: pageFadeSlide 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Container & Layout */
@@ -735,7 +735,12 @@ a:hover {
 /* Modals */
 .modal-backdrop {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
   background-color: rgba(10, 26, 44, 0.7);
   backdrop-filter: blur(5px);
   -webkit-backdrop-filter: blur(5px);
@@ -743,7 +748,8 @@ a:hover {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  z-index: 1000;
+  z-index: 9999;
+  overflow: hidden;
 }
 
 .modal-dialog {
