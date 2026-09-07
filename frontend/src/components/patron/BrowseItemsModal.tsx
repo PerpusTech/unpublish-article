@@ -250,10 +250,13 @@ export const BrowseItemsModal: React.FC<BrowseItemsModalProps> = ({
           {currentTab !== 'year' && (
             <div style={{ position: 'relative', width: 280, maxWidth: '100%' }}>
               <input
+                id={`browse-search-input-${currentTab}`}
+                name={`browse_search_${currentTab}`}
                 type="text"
                 placeholder={`Cari di ${currentTabMeta.label.toLowerCase()}...`}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                autoComplete="off"
                 style={{
                   width: '100%',
                   padding: '6px 28px 6px 12px',

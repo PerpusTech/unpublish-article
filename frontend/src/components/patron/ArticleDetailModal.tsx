@@ -168,7 +168,7 @@ export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({
               <div style={{ padding: '14px 16px', textAlign: 'center', background: 'var(--color-surface)', borderRadius: 'var(--radius-md)', color: 'var(--color-text-muted)', fontSize: 13, border: '1px dashed var(--color-border)' }}>
                 {loadingDocs
                   ? 'Sedang memeriksa ketersediaan berkas digital di database EPrints...'
-                  : 'Naskah ini tercatat belum memiliki dokumen digital PDF yang terhubung di server EPrints.'}
+                  : 'Naskah ini tercatat belum memiliki dokumen PDF yang terhubung di server EPrints.'}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

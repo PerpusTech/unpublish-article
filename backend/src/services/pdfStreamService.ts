@@ -20,7 +20,7 @@ export class PdfStreamService {
     const doc = article.documents?.find((d: DocumentItem) => d.docid === docId) || article.documents?.[0];
 
     if (!doc) {
-      this.sendFallbackPdf(article, eprintId, res, 'Dokumen digital tidak terdaftar pada naskah ini.');
+      this.sendFallbackPdf(article, eprintId, res, 'Dokumen tidak terdaftar pada naskah ini.');
       return;
     }
 

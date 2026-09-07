@@ -320,6 +320,22 @@ export const api = {
     return json;
   },
 
+  async createBatchTokens(data: {
+    items: { patronName: string; patronNim: string; notes?: string }[];
+    durationMinutes: number;
+    defaultNotes?: string;
+  }): Promise<{ success: boolean; message: string; tokens: { token: TokenAdminItem; qrDataUrl: string }[]; count: number }> {
+    const res = await fetch(`${API_BASE}/admin/tokens/batch`, {
+      method: 'POST',
+      headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'Gagal membuat tiket massal');
+    return json;
+  },
+
   async listTokens(filter?: {
     status?: string;
     search?: string;
@@ -494,10 +510,71 @@ export const api = {
   },
 
   // === CAS SSO (auth.ums.ac.id) ===
-  async getCasLoginUrl(): Promise<{ url: string }> {
+  async getCasLoginUrl(): Promise<{ url: string; switchAccountUrl?: string }> {
     const res = await fetch(`${API_BASE}/auth/cas/login`, { credentials: 'include' });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error?.message || 'Gagal menyiapkan sesi SSO');
     return json;
   },
+
+  // === Analytics & Insights ===
+  async getAnalytics(): Promise<AnalyticsData> {
+    const res = await fetch(`${API_BASE}/admin/analytics`, {
+      credentials: 'include',
+      headers: getAdminHeaders(),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'Gagal memuat data analitik');
+    return json.data;
+  },
 };
+
+export interface AnalyticsData {
+  kpis: {
+    totalTokens: number;
+    activeTokens: number;
+    pendingTokens: number;
+    revokedTokens: number;
+    totalDocumentViews: number;
+    uniquePatrons: number;
+    averageDurationMinutes: number;
+  };
+  topArticles: {
+    eprint_id: number;
+    article_title: string;
+    view_count: number;
+    unique_readers: number;
+  }[];
+  topPatrons: {
+    patron_nim: string;
+    patron_name: string;
+    total_actions: number;
+    document_views: number;
+    tokens_used: number;
+    last_activity: string;
+  }[];
+  facultyDistribution: {
+    prefix: string;
+    faculty: string;
+    patron_count: number;
+    activity_count: number;
+  }[];
+  hourlyActivity: {
+    hour: string;
+    label: string;
+    count: number;
+    view_count: number;
+  }[];
+  dailyTrend: {
+    date: string;
+    total_events: number;
+    document_views: number;
+    active_readers: number;
+  }[];
+  tokenStatusBreakdown: {
+    ACTIVE: number;
+    PENDING: number;
+    EXPIRED: number;
+    REVOKED: number;
+  };
+}

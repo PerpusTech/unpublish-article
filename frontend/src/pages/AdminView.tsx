@@ -4,6 +4,7 @@ import { ActiveSessionsTable } from '../components/admin/ActiveSessionsTable';
 import { TokenGeneratorModal } from '../components/admin/TokenGeneratorModal';
 import { AuditLogTable } from '../components/admin/AuditLogTable';
 import { UserManagementTable } from '../components/admin/UserManagementTable';
+import { AnalyticsDashboard } from '../components/admin/AnalyticsDashboard';
 
 interface AdminViewProps {
   onBackToPatron: () => void;
@@ -17,7 +18,7 @@ interface ToastState {
 export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
   const [adminUser, setAdminUser] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'TOKENS' | 'AUDIT' | 'USERS' | 'SYSTEM'>('TOKENS');
+  const [activeTab, setActiveTab] = useState<'TOKENS' | 'ANALYTICS' | 'AUDIT' | 'USERS' | 'SYSTEM'>('TOKENS');
 
   // Token management
   const [tokens, setTokens] = useState<TokenAdminItem[]>([]);
@@ -31,12 +32,12 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
   // Toast feedback state
   const [toast, setToast] = useState<ToastState | null>(null);
 
-  const showToast = (message: string, type: 'success' | 'danger' = 'success') => {
+  const showToast = React.useCallback((message: string, type: 'success' | 'danger' = 'success') => {
     setToast({ message, type });
     setTimeout(() => {
       setToast(null);
     }, 4000);
-  };
+  }, []);
 
   const checkAdminAuth = async () => {
     setLoading(true);
@@ -104,6 +105,25 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
       }
     } catch (err: any) {
       setLoginError(err.message || 'Gagal menghubungi gerbang SSO UMS.');
+      setSsoLoading(false);
+    }
+  };
+
+  const handleSwitchAccount = async () => {
+    setSsoLoading(true);
+    setLoginError(null);
+    try {
+      await api.adminLogout();
+      const res = await api.getCasLoginUrl();
+      if (res.switchAccountUrl) {
+        window.location.href = res.switchAccountUrl;
+      } else if (res.url) {
+        window.location.href = `https://auth.ums.ac.id/cas/logout?service=${encodeURIComponent(res.url)}`;
+      } else {
+        window.location.href = `https://auth.ums.ac.id/cas/logout?service=${encodeURIComponent(window.location.origin + '/admin')}`;
+      }
+    } catch (err: any) {
+      setLoginError(err.message || 'Gagal memproses pengalihan akun SSO.');
       setSsoLoading(false);
     }
   };
@@ -179,7 +199,37 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
 
         {loginError && (
           <div className="alert-box alert-danger animated-fade-in" style={{ marginBottom: 20 }}>
-            {loginError}
+            <div style={{ marginBottom: 12, lineHeight: 1.5 }}>{loginError}</div>
+            <button
+              type="button"
+              className="btn"
+              onClick={handleSwitchAccount}
+              disabled={ssoLoading}
+              style={{
+                width: '100%',
+                backgroundColor: '#ffffff',
+                border: '1px solid #ef4444',
+                color: '#b91c1c',
+                fontSize: 13,
+                fontWeight: 700,
+                padding: '9px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                borderRadius: 'var(--radius-sm)',
+                cursor: 'pointer',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <line x1="19" y1="8" x2="19" y2="14" />
+                <line x1="22" y1="11" x2="16" y2="11" />
+              </svg>
+              <span>Ganti Akun SSO (Keluar & Masuk Akun Lain)</span>
+            </button>
           </div>
         )}
 
@@ -217,6 +267,35 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
           </button>
           <div style={{ fontSize: 11.5, color: 'var(--color-text-light)', textAlign: 'center', marginTop: 10 }}>
             Khusus civitas akademika UMS terdaftar ber-role <strong>Admin</strong>
+          </div>
+
+          <div style={{ textAlign: 'center', marginTop: 12 }}>
+            <button
+              type="button"
+              onClick={handleSwitchAccount}
+              disabled={ssoLoading}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--color-primary)',
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                textDecoration: 'underline',
+                padding: '4px 8px',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <line x1="19" y1="8" x2="19" y2="14" />
+                <line x1="22" y1="11" x2="16" y2="11" />
+              </svg>
+              <span>Ingin masuk dengan akun SSO UMS lain? (Ganti Akun)</span>
+            </button>
           </div>
         </div>
 
@@ -443,6 +522,19 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
 
         <button
           type="button"
+          className={`admin-tab-btn ${activeTab === 'ANALYTICS' ? 'active' : ''}`}
+          onClick={() => setActiveTab('ANALYTICS')}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10" />
+            <line x1="12" y1="20" x2="12" y2="4" />
+            <line x1="6" y1="20" x2="6" y2="14" />
+          </svg>
+          <span>Statistik & Analitik</span>
+        </button>
+
+        <button
+          type="button"
           className={`admin-tab-btn ${activeTab === 'AUDIT' ? 'active' : ''}`}
           onClick={() => setActiveTab('AUDIT')}
         >
@@ -490,6 +582,10 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
           onOpenCreate={() => setIsGeneratorOpen(true)}
           onShowToast={showToast}
         />
+      )}
+
+      {activeTab === 'ANALYTICS' && (
+        <AnalyticsDashboard onShowToast={showToast} />
       )}
 
       {activeTab === 'AUDIT' && <AuditLogTable />}

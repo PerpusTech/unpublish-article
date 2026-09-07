@@ -32,6 +32,18 @@ export const App: React.FC = () => {
     return 'PATRON';
   });
   const [isClaimModalOpen, setIsClaimModalOpen] = useState<boolean>(false);
+  const [initialClaimToken, setInitialClaimToken] = useState<string>('');
+
+  // Handle direct claim token from URL (e.g. ?claim_token=UMS-XXXXXX)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const claimTokenParam = params.get('claim_token') || params.get('claim');
+    if (claimTokenParam) {
+      setInitialClaimToken(claimTokenParam.trim().toUpperCase());
+      setIsClaimModalOpen(true);
+      setViewMode('PATRON');
+    }
+  }, []);
 
   // Sync route on popstate (browser back/forward button)
   useEffect(() => {
@@ -62,9 +74,20 @@ export const App: React.FC = () => {
     try {
       const res = await api.getSessionStatus();
       if (res.isActive && res.session) {
-        setSession(res.session);
-        localStorage.setItem('ums_patron_session', JSON.stringify(res.session));
-        localStorage.setItem('ums_patron_token_id', res.session.id);
+        const activeSession = res.session;
+        setSession((prev: PatronSession | null): PatronSession => {
+          if (
+            prev &&
+            prev.id === activeSession.id &&
+            prev.token_code === activeSession.token_code &&
+            prev.expires_at === activeSession.expires_at
+          ) {
+            return prev;
+          }
+          return activeSession;
+        });
+        localStorage.setItem('ums_patron_session', JSON.stringify(activeSession));
+        localStorage.setItem('ums_patron_token_id', activeSession.id);
       } else if (res.isActive === false && res.reason) {
         setSession(null);
         localStorage.removeItem('ums_patron_session');
@@ -153,12 +176,17 @@ export const App: React.FC = () => {
 
       <TokenEntryModal
         isOpen={isClaimModalOpen}
-        onClose={() => setIsClaimModalOpen(false)}
+        initialTokenCode={initialClaimToken}
+        onClose={() => {
+          setIsClaimModalOpen(false);
+          setInitialClaimToken('');
+        }}
         onSuccess={(newSession: PatronSession) => {
           setSession(newSession);
           localStorage.setItem('ums_patron_session', JSON.stringify(newSession));
           localStorage.setItem('ums_patron_token_id', newSession.id);
           setViewMode('PATRON');
+          setInitialClaimToken('');
         }}
       />
     </div>

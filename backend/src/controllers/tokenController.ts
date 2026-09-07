@@ -67,6 +67,68 @@ export class TokenController {
   }
 
   /**
+   * Admin creates batch tokens for research classes/groups
+   */
+  public static async createBatchTokens(req: Request, res: Response): Promise<void> {
+    const { items, durationMinutes, defaultNotes } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Daftar pemustaka (items) wajib berupa array tidak kosong.'
+        }
+      });
+      return;
+    }
+
+    if (items.length > 100) {
+      res.status(400).json({
+        error: {
+          code: 'BATCH_LIMIT_EXCEEDED',
+          message: 'Maksimal 100 tiket per proses pembuatan massal.'
+        }
+      });
+      return;
+    }
+
+    const duration = parseInt(durationMinutes || '120', 10);
+    if (isNaN(duration) || duration < 15 || duration > 480) {
+      res.status(400).json({
+        error: {
+          code: 'INVALID_DURATION',
+          message: 'Durasi harus berupa angka antara 15 hingga 480 menit (8 jam).'
+        }
+      });
+      return;
+    }
+
+    try {
+      const createdBy = req.admin?.email || 'admin@ums.ac.id';
+      const result = await TokenService.createBatchTokens({
+        items,
+        durationMinutes: duration,
+        createdByAdmin: createdBy,
+        defaultNotes
+      });
+
+      res.status(201).json({
+        success: true,
+        message: `Berhasil menerbitkan ${result.count} tiket membaca secara massal.`,
+        tokens: result.tokens,
+        count: result.count
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: err.message || 'Gagal menerbitkan tiket massal.'
+        }
+      });
+    }
+  }
+
+  /**
    * Admin lists active and pending tokens with pagination
    */
   public static async listTokens(req: Request, res: Response): Promise<void> {

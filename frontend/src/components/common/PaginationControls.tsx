@@ -169,6 +169,8 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
         <div className="pagination-page-size" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
           <span style={{ color: 'var(--color-text-muted)' }}>Per hal:</span>
           <select
+            id={`pagination-select-${position}`}
+            name={`page_size_${position}`}
             className="pagination-select"
             value={pageSize}
             onChange={(e) => onPageSizeChange(Number(e.target.value))}
@@ -195,6 +197,8 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
           <form onSubmit={handleJumpSubmit} className="pagination-jump" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
             <span style={{ color: 'var(--color-text-muted)' }}>Ke hal:</span>
             <input
+              id={`pagination-jump-input-${position}`}
+              name={`jump_page_${position}`}
               type="number"
               min={1}
               max={totalPages}
@@ -203,6 +207,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
               value={jumpInput}
               onChange={(e) => setJumpInput(e.target.value)}
               disabled={loading}
+              autoComplete="off"
               style={{
                 width: 54,
                 padding: '4px 6px',

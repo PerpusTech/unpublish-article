@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { api, TokenAdminItem } from '../../services/api';
 import { PaginationControls } from '../common/PaginationControls';
+import { ShareTokenModal } from './ShareTokenModal';
+import { ThermalSlipModal, ThermalSlipItem } from './ThermalSlipModal';
 
 interface ActiveSessionsTableProps {
   tokens?: TokenAdminItem[];
@@ -27,45 +29,87 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
   const [total, setTotal] = useState<number>(0);
   const [totalPages, setTotalPages] = useState<number>(1);
 
+  const currentPageRef = React.useRef(currentPage);
+  currentPageRef.current = currentPage;
+  const pageSizeRef = React.useRef(pageSize);
+  pageSizeRef.current = pageSize;
+
   // Row action states
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [copiedTokenId, setCopiedTokenId] = useState<string | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<{ id: string; name: string; tokenCode: string } | null>(null);
 
+  // Share & Thermal Print states
+  const [shareModalOpen, setShareModalOpen] = useState<boolean>(false);
+  const [shareTargetToken, setShareTargetToken] = useState<TokenAdminItem | null>(null);
+  const [thermalModalOpen, setThermalModalOpen] = useState<boolean>(false);
+  const [thermalItems, setThermalItems] = useState<ThermalSlipItem[]>([]);
+
+  const getQrUrl = (tokenCode: string) => {
+    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(tokenCode)}`;
+  };
+
+  const handlePrintSingleThermal = (t: TokenAdminItem) => {
+    setThermalItems([{ token: t, qrDataUrl: getQrUrl(t.token_code) }]);
+    setThermalModalOpen(true);
+  };
+
+  const handlePrintPageThermal = () => {
+    if (tokens.length === 0) return;
+    const items: ThermalSlipItem[] = tokens.map((t: TokenAdminItem) => ({
+      token: t,
+      qrDataUrl: getQrUrl(t.token_code),
+    }));
+    setThermalItems(items);
+    setThermalModalOpen(true);
+  };
+
   const fetchTokensData = useCallback(
-    async (targetPage = currentPage, targetPageSize = pageSize) => {
-      setLoading(true);
+    async (targetPage?: number, targetPageSize?: number, isSilent = false) => {
+      const pageToFetch = targetPage !== undefined ? targetPage : currentPageRef.current;
+      const sizeToFetch = targetPageSize !== undefined ? targetPageSize : pageSizeRef.current;
+
+      if (!isSilent) setLoading(true);
       try {
         const res = await api.listTokens({
           status: statusFilter !== 'ALL' ? statusFilter : undefined,
           search: searchQuery.trim() || undefined,
-          page: targetPage,
-          limit: targetPageSize,
+          page: pageToFetch,
+          limit: sizeToFetch,
         });
 
         setTokens(res.tokens || []);
         setTotal(res.total || 0);
         setTotalPages(res.totalPages || 1);
-        setCurrentPage(res.page || targetPage);
+        setCurrentPage(res.page || pageToFetch);
+        currentPageRef.current = res.page || pageToFetch;
       } catch (err: any) {
         console.error('Failed to load tokens:', err);
-        if (onShowToast) {
+        if (onShowToast && !isSilent) {
           onShowToast(err.message || 'Gagal memuat daftar token.', 'danger');
         }
       } finally {
-        setLoading(false);
+        if (!isSilent) setLoading(false);
       }
     },
-    [statusFilter, searchQuery, currentPage, pageSize, onShowToast]
+    [statusFilter, searchQuery, onShowToast]
   );
 
-  // Re-fetch on filter or search change with debounce
+  // Re-fetch on filter or search change with debounce (reset to page 1 only when filters/search change)
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchTokensData(1, pageSize);
     }, 250);
     return () => clearTimeout(timer);
   }, [statusFilter, searchQuery, pageSize]);
+
+  // Periodic silent background auto-reload (every 6 seconds) keeping current active page
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchTokensData(currentPageRef.current, pageSizeRef.current, true);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [fetchTokensData]);
 
   // Lock body scroll when revoke modal is open
   useEffect(() => {
@@ -79,11 +123,14 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
 
   const handlePageChange = (newPage: number) => {
     if (newPage < 1 || newPage > totalPages || newPage === currentPage || loading) return;
+    setCurrentPage(newPage);
+    currentPageRef.current = newPage;
     fetchTokensData(newPage, pageSize);
   };
 
   const handlePageSizeChange = (newSize: number) => {
     setPageSize(newSize);
+    pageSizeRef.current = newSize;
     fetchTokensData(1, newSize);
   };
 
@@ -238,10 +285,13 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
           {/* Inline Quick Search */}
           <div style={{ position: 'relative', width: 240 }}>
             <input
+              id="active-sessions-search-input"
+              name="sessions_search"
               type="text"
               placeholder="Cari nama / NIM / token..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              autoComplete="off"
               style={{
                 width: '100%',
                 padding: '7px 28px 7px 12px',
@@ -291,6 +341,23 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Thermal Slip Batch Print Button */}
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={handlePrintPageThermal}
+            disabled={tokens.length === 0 || loading}
+            title="Cetak slip termal seluruh tiket di halaman ini"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 6 2 18 2 18 9" />
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+              <rect x="6" y="14" width="12" height="8" />
+            </svg>
+            <span>Slip Termal ({tokens.length})</span>
+          </button>
+
           {/* Export CSV Button */}
           <a
             href={exportUrl}
@@ -334,25 +401,11 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
             </svg>
             <span>{loading ? 'Menyegarkan...' : 'Segarkan'}</span>
           </button>
-
         </div>
       </div>
 
-      {/* Top Pagination */}
-      <PaginationControls
-        position="top"
-        currentPage={currentPage}
-        totalPages={totalPages}
-        pageSize={pageSize}
-        totalItems={total}
-        itemLabel="tiket"
-        onPageChange={handlePageChange}
-        onPageSizeChange={handlePageSizeChange}
-        loading={loading}
-      />
-
-      {/* Main Table */}
-      <div className="table-wrapper">
+      {/* Sessions Data Table */}
+      <div className="table-responsive">
         <table className="data-table">
           <thead>
             <tr>
@@ -455,7 +508,44 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
                     </span>
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    <div style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'inline-flex', gap: 4, justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
+                      {/* Share WhatsApp & Email */}
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => {
+                          setShareTargetToken(token);
+                          setShareModalOpen(true);
+                        }}
+                        title="Kirim / Bagikan ke WhatsApp & Email Pemustaka"
+                        style={{ fontSize: 11.5, padding: '4px 7px', color: '#16a34a', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="18" cy="5" r="3" />
+                          <circle cx="6" cy="12" r="3" />
+                          <circle cx="18" cy="19" r="3" />
+                          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                        </svg>
+                        <span>Kirim</span>
+                      </button>
+
+                      {/* Print Thermal Slip */}
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handlePrintSingleThermal(token)}
+                        title="Cetak slip tiket ke printer termal POS"
+                        style={{ fontSize: 11.5, padding: '4px 7px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="6 9 6 2 18 2 18 9" />
+                          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                          <rect x="6" y="14" width="12" height="8" />
+                        </svg>
+                        <span>Slip</span>
+                      </button>
+
                       {(token.status === 'ACTIVE' || token.status === 'EXPIRED') && (
                         <>
                           <button
@@ -464,7 +554,7 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
                             onClick={() => handleExtend(token.id, 30, token.patron_name)}
                             disabled={actionLoading === token.id}
                             title="Tambah durasi membaca 30 menit"
-                            style={{ fontSize: 11.5, padding: '4px 8px', fontWeight: 700 }}
+                            style={{ fontSize: 11.5, padding: '4px 6px', fontWeight: 700 }}
                           >
                             +30m
                           </button>
@@ -474,7 +564,7 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
                             onClick={() => handleExtend(token.id, 60, token.patron_name)}
                             disabled={actionLoading === token.id}
                             title="Tambah durasi membaca 1 jam"
-                            style={{ fontSize: 11.5, padding: '4px 8px', fontWeight: 700 }}
+                            style={{ fontSize: 11.5, padding: '4px 6px', fontWeight: 700 }}
                           >
                             +1j
                           </button>
@@ -490,7 +580,7 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
                           title="Cabut sesi sekarang"
                           style={{
                             fontSize: 11.5,
-                            padding: '4px 8px',
+                            padding: '4px 7px',
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: 4,
@@ -630,6 +720,21 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
           </div>,
           document.body
         )}
+
+      {/* Share Modal */}
+      <ShareTokenModal
+        isOpen={shareModalOpen}
+        onClose={() => setShareModalOpen(false)}
+        token={shareTargetToken}
+        onShowToast={onShowToast}
+      />
+
+      {/* Thermal Slip Modal */}
+      <ThermalSlipModal
+        isOpen={thermalModalOpen}
+        onClose={() => setThermalModalOpen(false)}
+        items={thermalItems}
+      />
     </div>
   );
 };

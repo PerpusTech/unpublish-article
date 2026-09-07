@@ -151,7 +151,8 @@ export class AuthController {
    */
   public static casLogin(req: Request, res: Response): void {
     const loginUrl = CasService.getLoginUrl();
-    res.json({ url: loginUrl });
+    const switchAccountUrl = CasService.getLogoutUrl(loginUrl);
+    res.json({ url: loginUrl, switchAccountUrl });
   }
 
   /**

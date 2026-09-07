@@ -5,6 +5,16 @@ import { ArticleCardSkeleton } from '../components/patron/ArticleCardSkeleton';
 import { ArticleDetailModal } from '../components/patron/ArticleDetailModal';
 import { PDFCanvasViewer } from '../components/pdf/PDFCanvasViewer';
 import { BrowseItemsModal, BrowseCategory } from '../components/patron/BrowseItemsModal';
+import { PaginationControls } from '../components/common/PaginationControls';
+
+export interface RecentReadItem {
+  eprintid: number;
+  title: string;
+  creators?: string;
+  year?: string | number;
+  article_status?: string;
+  openedAt: string;
+}
 
 interface PatronViewProps {
   session: PatronSession | null;
@@ -19,6 +29,46 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'UNPUBLISH' | 'PUBLISH'>('ALL');
   const [selectedArticle, setSelectedArticle] = useState<ArticleItem | null>(null);
   const [isCopied, setIsCopied] = useState<boolean>(false);
+
+  // Recent Reads State
+  const [recentReads, setRecentReads] = useState<RecentReadItem[]>(() => {
+    try {
+      const saved = sessionStorage.getItem('ums_patron_recent_reads');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const addToRecentReads = (art: { eprintid: number; title: string; creators?: string[] | string; date_year?: number; year?: string | number; eprint_status?: string; article_status?: string }) => {
+    setRecentReads((prev: RecentReadItem[]) => {
+      const filtered = prev.filter((r: RecentReadItem) => r.eprintid !== art.eprintid);
+      const creatorStr = Array.isArray(art.creators) ? art.creators.join(', ') : art.creators || '';
+      const yearStr = art.date_year || art.year || '';
+      const updated: RecentReadItem[] = [
+        {
+          eprintid: art.eprintid,
+          title: art.title,
+          creators: creatorStr,
+          year: yearStr,
+          article_status: art.eprint_status || art.article_status || 'UNPUBLISH',
+          openedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        },
+        ...filtered,
+      ].slice(0, 6);
+      try {
+        sessionStorage.setItem('ums_patron_recent_reads', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const handleClearRecentReads = () => {
+    setRecentReads([]);
+    try {
+      sessionStorage.removeItem('ums_patron_recent_reads');
+    } catch {}
+  };
 
   // Browse Items State
   const [isBrowseModalOpen, setIsBrowseModalOpen] = useState<boolean>(false);
@@ -40,13 +90,20 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
   const [totalPages, setTotalPages] = useState<number>(1);
-  const [jumpInput, setJumpInput] = useState<string>('');
 
-  const loadArticles = async (targetPage = currentPage, targetPageSize = pageSize) => {
+  const currentPageRef = React.useRef(currentPage);
+  currentPageRef.current = currentPage;
+  const pageSizeRef = React.useRef(pageSize);
+  pageSizeRef.current = pageSize;
+
+  const loadArticles = async (targetPage?: number, targetPageSize?: number) => {
     if (!session) {
       setArticles([]);
       return;
     }
+
+    const pageToLoad = targetPage !== undefined ? targetPage : currentPageRef.current;
+    const sizeToLoad = targetPageSize !== undefined ? targetPageSize : pageSizeRef.current;
 
     setLoading(true);
     try {
@@ -58,13 +115,14 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
         type: activeBrowseFilter?.category === 'type' ? activeBrowseFilter.value : undefined,
         subject: activeBrowseFilter?.category === 'subject' ? activeBrowseFilter.value : undefined,
         author: activeBrowseFilter?.category === 'author' ? activeBrowseFilter.value : undefined,
-        page: targetPage,
-        limit: targetPageSize,
+        page: pageToLoad,
+        limit: sizeToLoad,
       });
       setArticles(res.items);
       setTotal(res.total);
-      setTotalPages(res.totalPages || Math.ceil(res.total / targetPageSize) || 1);
-      setCurrentPage(targetPage);
+      setTotalPages(res.totalPages || Math.ceil(res.total / sizeToLoad) || 1);
+      setCurrentPage(pageToLoad);
+      currentPageRef.current = pageToLoad;
     } catch (err: any) {
       console.error('Error fetching articles:', err);
     } finally {
@@ -79,7 +137,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
       setIsBrowseModalOpen(false);
     }
     loadArticles(1, pageSize);
-  }, [session, statusFilter, activeBrowseFilter]);
+  }, [session?.id, statusFilter, activeBrowseFilter]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,173 +175,6 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
     loadArticles(1, newSize);
   };
 
-  const handleJumpSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const p = parseInt(jumpInput, 10);
-    if (!isNaN(p) && p >= 1 && p <= totalPages) {
-      handlePageChange(p);
-      setJumpInput('');
-    }
-  };
-
-  const getPaginationPages = (current: number, total: number) => {
-    if (total <= 7) {
-      return Array.from({ length: total }, (_, i) => i + 1);
-    }
-    const pages: (number | string)[] = [];
-    pages.push(1);
-
-    if (current > 3) {
-      pages.push('...');
-    }
-
-    const start = Math.max(2, current - 1);
-    const end = Math.min(total - 1, current + 1);
-
-    for (let i = start; i <= end; i++) {
-      pages.push(i);
-    }
-
-    if (current < total - 2) {
-      pages.push('...');
-    }
-
-    pages.push(total);
-    return pages;
-  };
-
-  const renderPagination = (position: 'top' | 'bottom') => {
-    if (totalPages <= 1 || articles.length === 0) return null;
-
-    return (
-      <div
-        className="pagination-container"
-        style={position === 'top' ? { marginTop: 0, marginBottom: 18, padding: '12px 18px' } : undefined}
-      >
-        <div className="pagination-info">
-          <span>
-            Menampilkan <strong>{((currentPage - 1) * pageSize) + 1}</strong> - <strong>{Math.min(currentPage * pageSize, total)}</strong> dari <strong>{total.toLocaleString('id-ID')}</strong> naskah
-          </span>
-        </div>
-
-        <div className="pagination-controls">
-          {/* First Page Button */}
-          <button
-            type="button"
-            className="pagination-btn"
-            onClick={() => handlePageChange(1)}
-            disabled={currentPage === 1 || loading}
-            title="Halaman Pertama"
-          >
-            «
-          </button>
-
-          {/* Prev Page Button */}
-          <button
-            type="button"
-            className="pagination-btn"
-            onClick={() => handlePageChange(currentPage - 1)}
-            disabled={currentPage === 1 || loading}
-            title="Halaman Sebelumnya"
-          >
-            ‹
-          </button>
-
-          {/* Page Numbers */}
-          {getPaginationPages(currentPage, totalPages).map((p, idx) => (
-            typeof p === 'number' ? (
-              <button
-                key={`${position}-page-${p}`}
-                type="button"
-                className={`pagination-btn ${p === currentPage ? 'active' : ''}`}
-                onClick={() => handlePageChange(p)}
-                disabled={loading}
-              >
-                {p}
-              </button>
-            ) : (
-              <span key={`${position}-ellipsis-${idx}`} className="pagination-ellipsis">
-                ...
-              </span>
-            )
-          ))}
-
-          {/* Next Page Button */}
-          <button
-            type="button"
-            className="pagination-btn"
-            onClick={() => handlePageChange(currentPage + 1)}
-            disabled={currentPage === totalPages || loading}
-            title="Halaman Berikutnya"
-          >
-            ›
-          </button>
-
-          {/* Last Page Button */}
-          <button
-            type="button"
-            className="pagination-btn"
-            onClick={() => handlePageChange(totalPages)}
-            disabled={currentPage === totalPages || loading}
-            title="Halaman Terakhir"
-          >
-            »
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-          {/* Page Size Selector */}
-          <div className="pagination-page-size">
-            <span>Per hal:</span>
-            <select
-              className="pagination-select"
-              value={pageSize}
-              onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-              disabled={loading}
-            >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-            </select>
-          </div>
-
-          {/* Jump to Page */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const p = parseInt(jumpInput, 10);
-              if (!isNaN(p) && p >= 1 && p <= totalPages) {
-                handlePageChange(p);
-                setJumpInput('');
-              }
-            }}
-            className="pagination-jump"
-          >
-            <span>Ke hal:</span>
-            <input
-              type="number"
-              min={1}
-              max={totalPages}
-              className="pagination-jump-input"
-              placeholder={currentPage.toString()}
-              value={jumpInput}
-              onChange={(e) => setJumpInput(e.target.value)}
-              disabled={loading}
-            />
-            <button
-              type="submit"
-              className="btn btn-secondary btn-sm"
-              style={{ height: 34, padding: '0 10px', fontSize: 12 }}
-              disabled={loading || !jumpInput}
-            >
-              Buka
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  };
-
   const handleCopyToken = () => {
     if (!session?.token_code) return;
     navigator.clipboard.writeText(session.token_code);
@@ -296,7 +187,16 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
       onOpenClaimModal();
       return;
     }
+    addToRecentReads({
+      eprintid: articleId,
+      title: title,
+    });
     setActivePdf({ articleId, docId, title });
+  };
+
+  const handleSelectArticle = (art: ArticleItem) => {
+    addToRecentReads(art);
+    setSelectedArticle(art);
   };
 
   return (
@@ -475,6 +375,172 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
             </div>
           </div>
 
+          {/* Recent Reads (Riwayat Baca Terakhir Pemustaka) */}
+          {recentReads.length > 0 && (
+            <div
+              style={{
+                marginBottom: 20,
+                padding: '12px 16px',
+                backgroundColor: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-lg)',
+                boxShadow: 'var(--shadow-sm)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-primary)' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                  </svg>
+                  <span>Riwayat Naskah Terakhir Dibuka (Recent Reads)</span>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                      color: 'var(--color-primary)',
+                      padding: '1px 7px',
+                      borderRadius: 999,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {recentReads.length}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleClearRecentReads}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--color-text-muted)',
+                    fontSize: 11.5,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                  title="Hapus riwayat naskah yang baru saja dibuka"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  <span>Bersihkan Riwayat</span>
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                  gap: 10,
+                }}
+              >
+                {recentReads.map((item) => (
+                  <div
+                    key={`recent-${item.eprintid}`}
+                    onClick={() => {
+                      api.getArticle(item.eprintid)
+                        .then((fullArt) => setSelectedArticle(fullArt))
+                        .catch(() => {
+                          setSelectedArticle({
+                            eprintid: item.eprintid,
+                            title: item.title,
+                            abstract: '',
+                            type: 'article',
+                            creators: item.creators ? [item.creators] : [],
+                            date_year: Number(item.year) || 0,
+                            eprint_status: (item.article_status as any) || 'buffer',
+                            documents: [],
+                          });
+                        });
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      backgroundColor: 'var(--color-surface-subtle)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 'var(--radius-md)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 10,
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--color-primary)';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--color-border)';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div
+                        style={{
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          color: 'var(--color-text)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                        title={item.title}
+                      >
+                        {item.title}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                        <span>ID #{item.eprintid}</span>
+                        {item.year && <span>• {item.year}</span>}
+                        <span>• Dibuka: {item.openedAt}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: 11,
+                        whiteSpace: 'nowrap',
+                        fontWeight: 600,
+                        backgroundColor: 'var(--color-surface)',
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        api.getArticle(item.eprintid)
+                          .then((fullArt) => {
+                            if (fullArt.documents && fullArt.documents.length > 0) {
+                              handleOpenPdf(fullArt.eprintid, fullArt.documents[0].docid, fullArt.title);
+                            } else {
+                              setSelectedArticle(fullArt);
+                            }
+                          })
+                          .catch(() => {
+                            setSelectedArticle({
+                              eprintid: item.eprintid,
+                              title: item.title,
+                              abstract: '',
+                              type: 'article',
+                              creators: item.creators ? [item.creators] : [],
+                              date_year: Number(item.year) || 0,
+                              eprint_status: (item.article_status as any) || 'buffer',
+                              documents: [],
+                            });
+                          });
+                      }}
+                    >
+                      Buka Lagi ↗
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Search Bar & Filter Controls (Academic Scholarly Box) */}
           <div id="search-catalog-section" className="search-container">
             <form onSubmit={handleSearch} className="search-row" style={{ position: 'relative' }}>
@@ -496,12 +562,15 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
                 </div>
 
                 <input
+                  id="patron-catalog-search-input"
+                  name="search_query"
                   type="text"
                   className="search-input"
                   style={{ paddingLeft: 42, paddingRight: searchQuery ? 40 : 16 }}
                   placeholder="Cari naskah: judul, topik, nama penulis, NIM / Nomor Identifikasi, atau ID eprint..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  autoComplete="off"
                 />
 
                 {searchQuery && (
@@ -793,21 +862,43 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
           ) : (
             <div>
               {/* Top Pagination Bar */}
-              {renderPagination('top')}
+              <PaginationControls
+                position="top"
+                itemLabel="naskah karya ilmiah"
+                currentPage={currentPage}
+                totalPages={totalPages}
+                pageSize={pageSize}
+                totalItems={total}
+                onPageChange={handlePageChange}
+                onPageSizeChange={handlePageSizeChange}
+                pageSizeOptions={[10, 20, 50, 100]}
+                loading={loading}
+              />
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {articles.map((item) => (
                   <ArticleCard
                     key={item.eprintid}
                     article={item}
-                    onSelect={(art) => setSelectedArticle(art)}
+                    onSelect={handleSelectArticle}
                     onOpenPdf={handleOpenPdf}
                   />
                 ))}
               </div>
 
               {/* Bottom Pagination Bar */}
-              {renderPagination('bottom')}
+              <PaginationControls
+                position="bottom"
+                itemLabel="naskah karya ilmiah"
+                currentPage={currentPage}
+                totalPages={totalPages}
+                pageSize={pageSize}
+                totalItems={total}
+                onPageChange={handlePageChange}
+                onPageSizeChange={handlePageSizeChange}
+                pageSizeOptions={[10, 20, 50, 100]}
+                loading={loading}
+              />
             </div>
           )}
         </div>
@@ -848,3 +939,4 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
     </div>
   );
 };
+

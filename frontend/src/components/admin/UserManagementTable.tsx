@@ -24,6 +24,12 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
   const [total, setTotal] = useState<number>(0);
   const [totalPages, setTotalPages] = useState<number>(1);
 
+  // Pagination refs to avoid stale closures in background refresh
+  const currentPageRef = React.useRef(currentPage);
+  currentPageRef.current = currentPage;
+  const pageSizeRef = React.useRef(pageSize);
+  pageSizeRef.current = pageSize;
+
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
@@ -33,43 +39,58 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
   const [actionLoadingEmail, setActionLoadingEmail] = useState<string | null>(null);
 
   const fetchUsers = useCallback(
-    async (targetPage = currentPage, targetPageSize = pageSize) => {
-      setLoading(true);
+    async (targetPage?: number, targetPageSize?: number, isSilent = false) => {
+      const pageToFetch = targetPage ?? currentPageRef.current;
+      const sizeToFetch = targetPageSize ?? pageSizeRef.current;
+
+      if (!isSilent) {
+        setLoading(true);
+      }
       try {
         const res = await api.listUsers({
           search: searchQuery.trim() || undefined,
           role: roleFilter !== 'ALL' ? roleFilter : undefined,
-          page: targetPage,
-          limit: targetPageSize,
+          page: pageToFetch,
+          limit: sizeToFetch,
         });
 
         setUsers(res.users || []);
         setTotal(res.total || 0);
         setTotalPages(res.totalPages || 1);
-        setCurrentPage(res.page || targetPage);
+        setCurrentPage(res.page || pageToFetch);
+        currentPageRef.current = res.page || pageToFetch;
       } catch (err: any) {
-        onShowToast(err.message || 'Gagal memuat pengguna', 'danger');
+        if (!isSilent) {
+          onShowToast(err.message || 'Gagal memuat pengguna', 'danger');
+        }
       } finally {
-        setLoading(false);
+        if (!isSilent) {
+          setLoading(false);
+        }
       }
     },
-    [searchQuery, roleFilter, currentPage, pageSize, onShowToast]
+    [searchQuery, roleFilter, onShowToast]
   );
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchUsers(1, pageSize);
+      fetchUsers(1, pageSizeRef.current);
     }, 250);
     return () => clearTimeout(timer);
-  }, [searchQuery, roleFilter, pageSize]);
+  }, [searchQuery, roleFilter]);
 
   const handlePageChange = (newPage: number) => {
     if (newPage < 1 || newPage > totalPages || newPage === currentPage || loading) return;
+    setCurrentPage(newPage);
+    currentPageRef.current = newPage;
     fetchUsers(newPage, pageSize);
   };
 
   const handlePageSizeChange = (newSize: number) => {
     setPageSize(newSize);
+    pageSizeRef.current = newSize;
+    setCurrentPage(1);
+    currentPageRef.current = 1;
     fetchUsers(1, newSize);
   };
 
@@ -178,12 +199,15 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
               </svg>
             </span>
             <input
+              id="user-management-search-input"
+              name="user_search"
               type="text"
               className="form-input search-input-animated"
               style={{ paddingLeft: 34, height: 38 }}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Cari nama atau email civitas..."
+              autoComplete="off"
             />
             {searchQuery && (
               <button

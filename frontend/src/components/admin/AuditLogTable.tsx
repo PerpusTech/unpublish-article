@@ -12,30 +12,39 @@ export const AuditLogTable: React.FC = () => {
   const [search, setSearch] = useState<string>('');
   const [actionFilter, setActionFilter] = useState<string>('ALL');
 
+  const currentPageRef = React.useRef(currentPage);
+  currentPageRef.current = currentPage;
+  const pageSizeRef = React.useRef(pageSize);
+  pageSizeRef.current = pageSize;
+
   const fetchLogs = useCallback(
-    async (targetPage = currentPage, targetPageSize = pageSize) => {
-      setLoading(true);
+    async (targetPage?: number, targetPageSize?: number, isSilent = false) => {
+      const pageToFetch = targetPage !== undefined ? targetPage : currentPageRef.current;
+      const sizeToFetch = targetPageSize !== undefined ? targetPageSize : pageSizeRef.current;
+
+      if (!isSilent) setLoading(true);
       try {
         const res = await api.getAuditLogs({
           search: search.trim() || undefined,
           action: actionFilter !== 'ALL' ? actionFilter : undefined,
-          page: targetPage,
-          limit: targetPageSize,
+          page: pageToFetch,
+          limit: sizeToFetch,
         });
         setLogs(res.logs || []);
         setTotal(res.total || 0);
         setTotalPages(res.totalPages || 1);
-        setCurrentPage(res.page || targetPage);
+        setCurrentPage(res.page || pageToFetch);
+        currentPageRef.current = res.page || pageToFetch;
       } catch (err) {
         console.error('Failed to load audit logs:', err);
       } finally {
-        setLoading(false);
+        if (!isSilent) setLoading(false);
       }
     },
-    [search, actionFilter, currentPage, pageSize]
+    [search, actionFilter]
   );
 
-  // Debounced search & filter refresh
+  // Debounced search & filter refresh (resets to page 1 on filter/search change)
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchLogs(1, pageSize);
@@ -43,13 +52,24 @@ export const AuditLogTable: React.FC = () => {
     return () => clearTimeout(timer);
   }, [search, actionFilter, pageSize]);
 
+  // Periodic silent auto-reload (every 10 seconds) preserving active page
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchLogs(currentPageRef.current, pageSizeRef.current, true);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [fetchLogs]);
+
   const handlePageChange = (newPage: number) => {
     if (newPage < 1 || newPage > totalPages || newPage === currentPage || loading) return;
+    setCurrentPage(newPage);
+    currentPageRef.current = newPage;
     fetchLogs(newPage, pageSize);
   };
 
   const handlePageSizeChange = (newSize: number) => {
     setPageSize(newSize);
+    pageSizeRef.current = newSize;
     fetchLogs(1, newSize);
   };
 
@@ -106,11 +126,14 @@ export const AuditLogTable: React.FC = () => {
         <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: 8, flex: 1, minWidth: 280 }}>
           <div style={{ position: 'relative', flex: 1 }}>
             <input
+              id="audit-log-search-input"
+              name="audit_search"
               type="text"
               className="form-input"
               placeholder="Cari berdasarkan NIM, Nama Pemustaka, atau Judul Artikel..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              autoComplete="off"
               style={{ width: '100%', paddingRight: search ? 30 : 12 }}
             />
             {search && (
@@ -140,6 +163,8 @@ export const AuditLogTable: React.FC = () => {
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <select
+            id="audit-log-action-select"
+            name="audit_action_filter"
             className="form-select"
             value={actionFilter}
             onChange={(e) => setActionFilter(e.target.value)}

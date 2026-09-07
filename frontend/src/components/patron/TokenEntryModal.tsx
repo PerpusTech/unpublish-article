@@ -4,23 +4,38 @@ import { api, PatronSession } from '../../services/api';
 
 interface TokenEntryModalProps {
   isOpen: boolean;
+  initialTokenCode?: string;
   onClose: () => void;
   onSuccess: (session: PatronSession) => void;
 }
 
-export const TokenEntryModal: React.FC<TokenEntryModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const [tokenCode, setTokenCode] = useState('');
+export const TokenEntryModal: React.FC<TokenEntryModalProps> = ({
+  isOpen,
+  initialTokenCode = '',
+  onClose,
+  onSuccess,
+}) => {
+  const [tokenCode, setTokenCode] = useState(initialTokenCode);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (initialTokenCode) {
+      setTokenCode(initialTokenCode);
+    }
+  }, [initialTokenCode]);
+
+  useEffect(() => {
     if (!isOpen) return;
+    if (initialTokenCode) {
+      setTokenCode(initialTokenCode);
+    }
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = originalOverflow;
     };
-  }, [isOpen]);
+  }, [isOpen, initialTokenCode]);
 
   if (!isOpen) return null;
 
@@ -73,11 +88,13 @@ export const TokenEntryModal: React.FC<TokenEntryModalProps> = ({ isOpen, onClos
               </label>
               <input
                 id="token-code-input"
+                name="token_code"
                 type="text"
                 className="form-input token-input-code"
                 placeholder="CONTOH: UMS-ABC123"
                 value={tokenCode}
                 onChange={(e) => setTokenCode(e.target.value.toUpperCase())}
+                autoComplete="off"
                 autoFocus
                 disabled={loading}
               />

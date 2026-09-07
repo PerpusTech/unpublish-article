@@ -8,6 +8,7 @@ import { TokenController } from './controllers/tokenController';
 import { ArticleController } from './controllers/articleController';
 import { AuditController } from './controllers/auditController';
 import { UserController } from './controllers/userController';
+import { AnalyticsController } from './controllers/analyticsController';
 import { requireAdminAuth } from './middlewares/adminAuth';
 import { requirePatronSession, optionalPatronSession } from './middlewares/patronAuth';
 import { TokenService } from './services/tokenService';
@@ -45,6 +46,7 @@ api.get('/auth/me', requireAdminAuth, AuthController.me);
 api.post('/auth/logout', AuthController.logout);
 
 api.post('/admin/tokens', requireAdminAuth, TokenController.createToken);
+api.post('/admin/tokens/batch', requireAdminAuth, TokenController.createBatchTokens);
 api.get('/admin/tokens', requireAdminAuth, TokenController.listTokens);
 api.get('/admin/tokens/export', requireAdminAuth, TokenController.exportCsv);
 api.post('/admin/tokens/:id/extend', requireAdminAuth, TokenController.extendToken);
@@ -52,6 +54,7 @@ api.post('/admin/tokens/:id/revoke', requireAdminAuth, TokenController.revokeTok
 
 api.get('/admin/audit-logs', requireAdminAuth, AuditController.listLogs);
 api.get('/admin/audit-logs/export', requireAdminAuth, AuditController.exportCsv);
+api.get('/admin/analytics', requireAdminAuth, AnalyticsController.getAnalytics);
 
 // ================= USER MANAGEMENT ROUTES =================
 api.get('/admin/users', requireAdminAuth, UserController.listUsers);

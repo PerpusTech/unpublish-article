@@ -157,7 +157,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect, onO
           </svg>
           <span>
             {article.documents && article.documents.length > 0
-              ? `${article.documents.length} Dokumen Digital (PDF)`
+              ? `${article.documents.length} Dokumen (PDF)`
               : 'Naskah Digital Terkoneksi'}
           </span>
         </div>

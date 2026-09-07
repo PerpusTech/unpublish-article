@@ -101,6 +101,37 @@ export class TokenService {
   }
 
   /**
+   * Admin generates multiple tokens in batch (for research classes/groups)
+   */
+  public static async createBatchTokens(params: {
+    items: { patronName: string; patronNim: string; notes?: string }[];
+    durationMinutes: number;
+    createdByAdmin: string;
+    defaultNotes?: string;
+  }): Promise<{ tokens: { token: TokenRecord; qrDataUrl: string }[]; count: number }> {
+    const results: { token: TokenRecord; qrDataUrl: string }[] = [];
+
+    for (const item of params.items) {
+      const name = item.patronName?.trim();
+      const nim = item.patronNim?.trim();
+      if (!name || !nim) continue;
+
+      const note = item.notes?.trim() || params.defaultNotes?.trim() || null;
+      const res = await this.createToken({
+        patronName: name,
+        patronNim: nim,
+        durationMinutes: params.durationMinutes,
+        createdByAdmin: params.createdByAdmin,
+        notes: note || undefined,
+      });
+
+      results.push(res);
+    }
+
+    return { tokens: results, count: results.length };
+  }
+
+  /**
    * Patron claims/activates a token in their browser
    */
   public static async claimToken(

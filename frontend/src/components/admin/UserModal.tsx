@@ -127,11 +127,13 @@ export const UserModal: React.FC<UserModalProps> = ({
               </label>
               <input
                 id="user-name"
+                name="user_name"
                 type="text"
                 className="form-input"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Contoh: Muhammad Arif, S.Hum."
+                autoComplete="name"
                 required
                 autoFocus
               />
@@ -143,11 +145,13 @@ export const UserModal: React.FC<UserModalProps> = ({
               </label>
               <input
                 id="user-email"
+                name="user_email"
                 type="email"
                 className="form-input"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="nama_user@ums.ac.id"
+                autoComplete="email"
                 disabled={!!editUser}
                 required
               />
@@ -164,6 +168,7 @@ export const UserModal: React.FC<UserModalProps> = ({
               </label>
               <select
                 id="user-role"
+                name="user_role"
                 className="form-select"
                 value={role}
                 onChange={(e) => setRole(e.target.value as 'ADMIN' | 'USER')}
