@@ -3,16 +3,16 @@ import { PatronSession } from '../services/api';
 
 interface HeaderProps {
   session: PatronSession | null;
-  isAdmin: boolean;
+  isAdmin?: boolean;
   onLogoutPatron: () => void;
-  onOpenAdmin: () => void;
-  onOpenPatron: () => void;
+  onOpenAdmin?: () => void;
+  onOpenPatron?: () => void;
   onOpenClaimModal: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   session,
-  isAdmin,
+  isAdmin = false,
   onLogoutPatron,
   onOpenAdmin,
   onOpenPatron,
@@ -92,24 +92,6 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={onOpenClaimModal}
             >
               Aktivasi Token Membaca
-            </button>
-          )}
-
-          {isAdmin ? (
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={onOpenPatron}
-            >
-              Katalog Pemustaka
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={onOpenAdmin}
-            >
-              Panel Pustakawan
             </button>
           )}
         </div>

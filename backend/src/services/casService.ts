@@ -11,6 +11,14 @@ export interface CasAuthResult {
   error?: string;
 }
 
+export interface CampusUserRole {
+  name: string;
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'USER';
+  eprintsUserType?: string;
+  username?: string;
+  email?: string;
+}
+
 export class CasService {
   /**
    * Build UMS CAS Login URL
@@ -23,26 +31,147 @@ export class CasService {
   }
 
   /**
+   * Build UMS CAS Logout URL (terminates CAS SSO TGC session)
+   */
+  public static getLogoutUrl(customServiceUrl?: string): string {
+    const serviceUrl = customServiceUrl || `${ENV.FRONTEND_URL}/?view=admin`;
+    const portStr = (ENV.CAS_PORT === 443 || ENV.CAS_PORT === 80) ? '' : `:${ENV.CAS_PORT}`;
+    const protocol = ENV.CAS_PORT === 80 ? 'http' : 'https';
+    return `${protocol}://${ENV.CAS_HOST}${portStr}${ENV.CAS_CONTEXT}/logout?service=${encodeURIComponent(serviceUrl)}`;
+  }
+
+  /**
    * Resolve user's official full name from campus EPrints MySQL database
    */
   public static async resolveCampusName(usernameOrEmail: string): Promise<string | null> {
+    const user = await CasService.resolveCampusUser(usernameOrEmail);
+    return user ? user.name : null;
+  }
+
+  /**
+   * Resolve user details and application role based on EPrints repository user status
+   * - EPrints Repository Administrator (usertype = 'admin') -> ADMIN
+   * - Specifically masharulmaali / mam708@ums.ac.id -> SUPER_ADMIN
+   * - Others (editor, user, etc.) -> USER
+   */
+  public static async resolveCampusUser(usernameOrEmail: string): Promise<CampusUserRole | null> {
+    const cleanUsername = usernameOrEmail.split('@')[0].trim().toLowerCase();
+    const cleanEmail = usernameOrEmail.trim().toLowerCase();
+
+    // 1. Check for Muhammad Asharul Ma'ali (masharulmaali / mam708)
+    if (
+      cleanUsername === 'masharulmaali' ||
+      cleanUsername === 'mam708' ||
+      cleanUsername === 'mas arul' ||
+      cleanEmail === 'mam708@ums.ac.id'
+    ) {
+      let fullName = "Muhammad Asharul Ma'ali";
+      if (mysqlPool) {
+        try {
+          const [rows]: any = await mysqlPool.query(
+            `SELECT name_honourific, name_given, name_family, email, username, usertype 
+             FROM user 
+             WHERE username IN ('masharulmaali', 'mas arul', 'mam708') OR email = 'mam708@ums.ac.id' 
+             ORDER BY userid DESC LIMIT 1`
+          );
+          if (rows && rows.length > 0) {
+            const u = rows[0];
+            const parts = [u.name_honourific, u.name_given, u.name_family].filter(Boolean).map((s: string) => s.trim());
+            if (parts.length > 0) fullName = parts.join(' ').trim();
+          }
+        } catch (err) {
+          console.warn('[EPrints resolve masharulmaali error]:', err);
+        }
+      }
+      return {
+        name: fullName,
+        role: 'SUPER_ADMIN',
+        eprintsUserType: 'admin',
+        username: 'masharulmaali',
+        email: 'mam708@ums.ac.id'
+      };
+    }
+
     if (!mysqlPool) return null;
+
     try {
-      const cleanUsername = usernameOrEmail.split('@')[0].trim();
+      // 2. Query EPrints user table for other users
       const [rows]: any = await mysqlPool.query(
-        'SELECT name_honourific, name_given, name_family FROM user WHERE username = ? OR email = ? ORDER BY userid DESC LIMIT 1',
-        [cleanUsername, usernameOrEmail]
+        `SELECT userid, username, usertype, name_honourific, name_given, name_family, email 
+         FROM user 
+         WHERE LOWER(username) = ? OR LOWER(email) = ? OR LOWER(username) = ? 
+         ORDER BY (usertype = 'admin') DESC, userid DESC LIMIT 1`,
+        [cleanUsername, cleanEmail, cleanEmail.split('@')[0]]
       );
+
       if (rows && rows.length > 0) {
         const u = rows[0];
         const parts = [u.name_honourific, u.name_given, u.name_family].filter(Boolean).map((s: string) => s.trim());
-        const fullName = parts.join(' ').trim();
-        if (fullName) return fullName;
+        const fullName = parts.join(' ').trim() || u.username;
+
+        const isSuperAdmin =
+          (u.username && u.username.toLowerCase() === 'masharulmaali') ||
+          (u.email && u.email.toLowerCase() === 'mam708@ums.ac.id');
+        const isRepoAdmin = u.usertype && u.usertype.toLowerCase() === 'admin';
+
+        return {
+          name: fullName,
+          role: isSuperAdmin ? 'SUPER_ADMIN' : isRepoAdmin ? 'ADMIN' : 'USER',
+          eprintsUserType: u.usertype,
+          username: u.username,
+          email: u.email || `${u.username}@ums.ac.id`
+        };
       }
     } catch (err) {
-      console.warn('[EPrints user name lookup error]:', err);
+      console.warn('[EPrints resolveCampusUser error]:', err);
     }
     return null;
+  }
+
+  /**
+   * Sync Repository Administrators from live EPrints MySQL into local admin_users table
+   */
+  public static async syncEPrintsAdmins(): Promise<void> {
+    if (!mysqlPool) return;
+    try {
+      const [rows]: any = await mysqlPool.query(
+        `SELECT userid, username, usertype, name_honourific, name_given, name_family, email 
+         FROM user 
+         WHERE usertype = 'admin'`
+      );
+
+      if (!rows || rows.length === 0) return;
+
+      const { query } = await import('../config/appDb');
+
+      for (const u of rows) {
+        const email = (u.email && u.email.trim()) ? u.email.trim().toLowerCase() : `${u.username.trim().toLowerCase()}@ums.ac.id`;
+        if (!email || !email.includes('@')) continue;
+
+        const parts = [u.name_honourific, u.name_given, u.name_family].filter(Boolean).map((s: string) => s.trim());
+        const name = parts.join(' ').trim() || u.username;
+
+        const isSuperAdmin =
+          u.username.toLowerCase() === 'masharulmaali' ||
+          u.username.toLowerCase() === 'mas arul' ||
+          email === 'mam708@ums.ac.id';
+
+        const assignedRole = isSuperAdmin ? 'SUPER_ADMIN' : 'ADMIN';
+
+        const existing = await query.get('SELECT email, role FROM admin_users WHERE email = ?', [email]);
+        if (!existing) {
+          await query.run(
+            `INSERT INTO admin_users (email, name, role, is_active) VALUES (?, ?, ?, 1)`,
+            [email, name, assignedRole]
+          );
+        } else if (isSuperAdmin && existing.role !== 'SUPER_ADMIN') {
+          await query.run(`UPDATE admin_users SET role = 'SUPER_ADMIN', name = ? WHERE email = ?`, [name, email]);
+        }
+      }
+      console.log(`[EPrints Sync] Successfully synced ${rows.length} EPrints Repository Administrators.`);
+    } catch (err) {
+      console.warn('[EPrints Sync Admins error]:', err);
+    }
   }
 
   /**

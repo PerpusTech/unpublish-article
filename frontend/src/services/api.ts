@@ -290,9 +290,17 @@ export const api = {
     return await res.json();
   },
 
-  async adminLogout(): Promise<void> {
+  async adminLogout(): Promise<{ success: boolean; message?: string; casLogoutUrl?: string }> {
     localStorage.removeItem('ums_admin_token');
-    await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
+    try {
+      const res = await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn('Logout request failed:', err);
+    }
+    return { success: true };
   },
 
   async createToken(data: {
@@ -312,10 +320,23 @@ export const api = {
     return json;
   },
 
-  async listTokens(filter?: { status?: string; search?: string }): Promise<TokenAdminItem[]> {
+  async listTokens(filter?: {
+    status?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    tokens: TokenAdminItem[];
+    total: number;
+    totalPages: number;
+    page: number;
+    limit: number;
+  }> {
     const qs = new URLSearchParams();
-    if (filter?.status) qs.append('status', filter.status);
+    if (filter?.status && filter.status !== 'ALL') qs.append('status', filter.status);
     if (filter?.search) qs.append('search', filter.search);
+    if (filter?.page) qs.append('page', filter.page.toString());
+    if (filter?.limit) qs.append('limit', filter.limit.toString());
 
     const res = await fetch(`${API_BASE}/admin/tokens?${qs.toString()}`, {
       credentials: 'include',
@@ -323,7 +344,14 @@ export const api = {
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error?.message || 'Gagal memuat token');
-    return json.tokens;
+    return json;
+  },
+
+  getTokensExportUrl(filter?: { status?: string; search?: string }): string {
+    const qs = new URLSearchParams();
+    if (filter?.status && filter.status !== 'ALL') qs.append('status', filter.status);
+    if (filter?.search) qs.append('search', filter.search);
+    return `${API_BASE}/admin/tokens/export${qs.toString() ? `?${qs.toString()}` : ''}`;
   },
 
   async extendToken(id: string, minutes: number): Promise<void> {
@@ -351,16 +379,25 @@ export const api = {
     }
   },
 
-  async getAuditLogs(params?: { search?: string; nim?: string; action?: string; page?: number }): Promise<{
+  async getAuditLogs(params?: {
+    search?: string;
+    nim?: string;
+    action?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
     logs: AuditLogItem[];
     total: number;
     totalPages: number;
+    page: number;
+    limit: number;
   }> {
     const qs = new URLSearchParams();
     if (params?.search) qs.append('search', params.search);
     if (params?.nim) qs.append('nim', params.nim);
-    if (params?.action) qs.append('action', params.action);
+    if (params?.action && params.action !== 'ALL') qs.append('action', params.action);
     if (params?.page) qs.append('page', params.page.toString());
+    if (params?.limit) qs.append('limit', params.limit.toString());
 
     const res = await fetch(`${API_BASE}/admin/audit-logs?${qs.toString()}`, {
       credentials: 'include',
@@ -371,16 +408,36 @@ export const api = {
     return json;
   },
 
-  getAuditExportUrl(search?: string): string {
-    const qs = search ? `?search=${encodeURIComponent(search)}` : '';
-    return `${API_BASE}/admin/audit-logs/export${qs}`;
+  getAuditExportUrl(filter?: { search?: string; action?: string; nim?: string } | string): string {
+    if (typeof filter === 'string') {
+      const qs = filter ? `?search=${encodeURIComponent(filter)}` : '';
+      return `${API_BASE}/admin/audit-logs/export${qs}`;
+    }
+    const qs = new URLSearchParams();
+    if (filter?.search) qs.append('search', filter.search);
+    if (filter?.nim) qs.append('nim', filter.nim);
+    if (filter?.action && filter.action !== 'ALL') qs.append('action', filter.action);
+    return `${API_BASE}/admin/audit-logs/export${qs.toString() ? `?${qs.toString()}` : ''}`;
   },
 
   // === User Management ===
-  async listUsers(params?: { search?: string; role?: string }): Promise<UserItem[]> {
+  async listUsers(params?: {
+    search?: string;
+    role?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    users: UserItem[];
+    total: number;
+    totalPages: number;
+    page: number;
+    limit: number;
+  }> {
     const qs = new URLSearchParams();
     if (params?.search) qs.append('search', params.search);
     if (params?.role && params.role !== 'ALL') qs.append('role', params.role);
+    if (params?.page) qs.append('page', params.page.toString());
+    if (params?.limit) qs.append('limit', params.limit.toString());
 
     const res = await fetch(`${API_BASE}/admin/users?${qs.toString()}`, {
       credentials: 'include',
@@ -388,7 +445,14 @@ export const api = {
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error?.message || 'Gagal memuat daftar pengguna');
-    return json.users;
+    return json;
+  },
+
+  getUsersExportUrl(filter?: { search?: string; role?: string }): string {
+    const qs = new URLSearchParams();
+    if (filter?.search) qs.append('search', filter.search);
+    if (filter?.role && filter.role !== 'ALL') qs.append('role', filter.role);
+    return `${API_BASE}/admin/users/export${qs.toString() ? `?${qs.toString()}` : ''}`;
   },
 
   async createUser(data: { email: string; name: string; role: 'ADMIN' | 'USER' }): Promise<{ success: boolean; user: UserItem; message?: string }> {

@@ -1,36 +1,61 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api, AuditLogItem } from '../../services/api';
+import { PaginationControls } from '../common/PaginationControls';
 
 export const AuditLogTable: React.FC = () => {
   const [logs, setLogs] = useState<AuditLogItem[]>([]);
   const [total, setTotal] = useState<number>(0);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
   const [loading, setLoading] = useState<boolean>(false);
   const [search, setSearch] = useState<string>('');
   const [actionFilter, setActionFilter] = useState<string>('ALL');
 
-  const fetchLogs = async () => {
-    setLoading(true);
-    try {
-      const res = await api.getAuditLogs({
-        search: search.trim() || undefined,
-        action: actionFilter !== 'ALL' ? actionFilter : undefined,
-      });
-      setLogs(res.logs);
-      setTotal(res.total);
-    } catch (err) {
-      console.error('Failed to load audit logs:', err);
-    } finally {
-      setLoading(false);
-    }
+  const fetchLogs = useCallback(
+    async (targetPage = currentPage, targetPageSize = pageSize) => {
+      setLoading(true);
+      try {
+        const res = await api.getAuditLogs({
+          search: search.trim() || undefined,
+          action: actionFilter !== 'ALL' ? actionFilter : undefined,
+          page: targetPage,
+          limit: targetPageSize,
+        });
+        setLogs(res.logs || []);
+        setTotal(res.total || 0);
+        setTotalPages(res.totalPages || 1);
+        setCurrentPage(res.page || targetPage);
+      } catch (err) {
+        console.error('Failed to load audit logs:', err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [search, actionFilter, currentPage, pageSize]
+  );
+
+  // Debounced search & filter refresh
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchLogs(1, pageSize);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [search, actionFilter, pageSize]);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || newPage > totalPages || newPage === currentPage || loading) return;
+    fetchLogs(newPage, pageSize);
   };
 
-  useEffect(() => {
-    fetchLogs();
-  }, [actionFilter]);
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    fetchLogs(1, newSize);
+  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchLogs();
+    fetchLogs(1, pageSize);
   };
 
   const formatAction = (action: string) => {
@@ -60,8 +85,14 @@ export const AuditLogTable: React.FC = () => {
     }
   };
 
+  const exportUrl = api.getAuditExportUrl({
+    search: search.trim() || undefined,
+    action: actionFilter !== 'ALL' ? actionFilter : undefined,
+  });
+
   return (
     <div>
+      {/* Search & Action Filter Bar */}
       <div
         style={{
           display: 'flex',
@@ -73,19 +104,41 @@ export const AuditLogTable: React.FC = () => {
         }}
       >
         <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: 8, flex: 1, minWidth: 280 }}>
-          <input
-            type="text"
-            className="form-input"
-            placeholder="Cari berdasarkan NIM, Nama Pemustaka, atau Judul Artikel..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <div style={{ position: 'relative', flex: 1 }}>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Cari berdasarkan NIM, Nama Pemustaka, atau Judul Artikel..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ width: '100%', paddingRight: search ? 30 : 12 }}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                style={{
+                  position: 'absolute',
+                  right: 8,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--color-text-muted)',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
           <button type="submit" className="btn btn-secondary" disabled={loading}>
             Cari
           </button>
         </form>
 
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <select
             className="form-select"
             value={actionFilter}
@@ -100,16 +153,61 @@ export const AuditLogTable: React.FC = () => {
           </select>
 
           <a
-            href={api.getAuditExportUrl(search)}
-            className="btn btn-primary btn-sm"
+            href={exportUrl}
+            className="btn btn-secondary btn-sm"
             download
-            style={{ whiteSpace: 'nowrap' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', textDecoration: 'none' }}
+            title="Unduh catatan aktivitas pemustaka format CSV"
           >
-            Unduh Laporan CSV ({total})
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span>Ekspor CSV ({total.toLocaleString('id-ID')})</span>
           </a>
+
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => fetchLogs()}
+            disabled={loading}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }}
+            >
+              <polyline points="23 4 23 10 17 10" />
+              <polyline points="1 20 1 14 7 14" />
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            </svg>
+            <span>{loading ? 'Memuat...' : 'Segarkan'}</span>
+          </button>
         </div>
       </div>
 
+      {/* Top Pagination */}
+      <PaginationControls
+        position="top"
+        currentPage={currentPage}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        totalItems={total}
+        itemLabel="aktivitas"
+        onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
+        loading={loading}
+      />
+
+      {/* Main Table */}
       <div className="table-wrapper">
         <table className="data-table">
           <thead>
@@ -126,7 +224,8 @@ export const AuditLogTable: React.FC = () => {
             {loading ? (
               <tr>
                 <td colSpan={6} style={{ textAlign: 'center', padding: 30 }}>
-                  Memuat data log audit...
+                  <div className="spinner-inline" style={{ marginBottom: 8 }} />
+                  <div>Memuat data log audit...</div>
                 </td>
               </tr>
             ) : logs.length === 0 ? (
@@ -169,6 +268,19 @@ export const AuditLogTable: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Bottom Pagination */}
+      <PaginationControls
+        position="bottom"
+        currentPage={currentPage}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        totalItems={total}
+        itemLabel="aktivitas"
+        onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
+        loading={loading}
+      />
     </div>
   );
 };

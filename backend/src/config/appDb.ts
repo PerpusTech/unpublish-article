@@ -112,10 +112,17 @@ export async function initAppDb(): Promise<void> {
   // Migrate legacy LIBRARIAN role to ADMIN
   await query.run(`UPDATE admin_users SET role = 'ADMIN' WHERE role = 'LIBRARIAN'`);
 
-  // Auto-enrich user mam708 real name from campus database if still placeholder
-  await query.run(
-    `UPDATE admin_users SET name = 'Muhammad Asharul Ma''ali, S.Kom' WHERE email = 'mam708@ums.ac.id' AND name IN ('Pustakawan UMS', 'Civitas UMS')`
-  );
+  // Auto-enrich and set SUPER_ADMIN specifically for Muhammad Asharul Ma'ali (masharulmaali / mam708)
+  const asharulUser = await query.get('SELECT email FROM admin_users WHERE email = ?', ['mam708@ums.ac.id']);
+  if (!asharulUser) {
+    await query.run(
+      `INSERT INTO admin_users (email, name, role, is_active) VALUES ('mam708@ums.ac.id', 'Muhammad Asharul Ma''ali', 'SUPER_ADMIN', 1)`
+    );
+  } else {
+    await query.run(
+      `UPDATE admin_users SET role = 'SUPER_ADMIN', name = 'Muhammad Asharul Ma''ali' WHERE email = 'mam708@ums.ac.id'`
+    );
+  }
 
   // Seed default UMS library admin for development / initial setup
   const defaultAdmin = await query.get('SELECT email FROM admin_users WHERE email = ?', ['pustakawan@ums.ac.id']);
@@ -127,7 +134,15 @@ export async function initAppDb(): Promise<void> {
     console.log('[DB] Seeded default librarian: pustakawan@ums.ac.id');
   }
 
-  console.log('[DB] Database tables verified successfully.');
+  // Sync all live EPrints Repository Administrators into local admin_users table
+  try {
+    const { CasService } = await import('../services/casService');
+    await CasService.syncEPrintsAdmins();
+  } catch (err) {
+    console.warn('[DB] Could not sync EPrints admins during startup:', err);
+  }
+
+  console.log('[DB] Database tables verified and EPrints roles synchronized successfully.');
 }
 
 export default db;

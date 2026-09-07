@@ -6,7 +6,7 @@ export interface AuditLogEntry {
   token_id: string;
   patron_nim: string;
   patron_name: string;
-  action: 'ACTIVATE_TOKEN' | 'SEARCH' | 'VIEW_METADATA' | 'VIEW_PDF' | 'SESSION_EXPIRED';
+  action: 'ACTIVATE_TOKEN' | 'SEARCH' | 'VIEW_METADATA' | 'VIEW_PDF' | 'SESSION_EXPIRED' | 'REVOKE_TOKEN';
   eprint_id?: number;
   article_title?: string;
   eprint_status?: string;
@@ -23,11 +23,11 @@ export class AuditService {
     tokenId: string;
     patronNim: string;
     patronName: string;
-    action: 'ACTIVATE_TOKEN' | 'SEARCH' | 'VIEW_METADATA' | 'VIEW_PDF' | 'SESSION_EXPIRED';
+    action: 'ACTIVATE_TOKEN' | 'SEARCH' | 'VIEW_METADATA' | 'VIEW_PDF' | 'SESSION_EXPIRED' | 'REVOKE_TOKEN';
     eprintId?: number;
     articleTitle?: string;
     eprintStatus?: string;
-    ipAddress: string;
+    ipAddress?: string;
     userAgent?: string;
   }): Promise<void> {
     const id = uuidv4();

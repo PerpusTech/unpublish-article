@@ -5,29 +5,34 @@ import { CasService } from '../services/casService';
 
 export class UserController {
   /**
-   * List users with search & filter
+   * List users with search, filter & pagination
    */
   public static async listUsers(req: Request, res: Response): Promise<void> {
     try {
       const search = (req.query.search as string || '').trim();
       const role = (req.query.role as string || '').trim().toUpperCase();
+      const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+      const offset = (page - 1) * limit;
 
-      let sql = 'SELECT email, name, role, is_active, sso_attributes, last_login_at, created_at FROM admin_users WHERE 1=1';
+      let whereSql = ' WHERE 1=1';
       const params: any[] = [];
 
       if (search) {
-        sql += ' AND (email LIKE ? OR name LIKE ?)';
+        whereSql += ' AND (email LIKE ? OR name LIKE ?)';
         params.push(`%${search}%`, `%${search}%`);
       }
 
       if (role && role !== 'ALL') {
-        sql += ' AND role = ?';
+        whereSql += ' AND role = ?';
         params.push(role);
       }
 
-      sql += ' ORDER BY created_at DESC';
+      const countRow = await query.get<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM admin_users ${whereSql}`, params);
+      const total = countRow?.cnt || 0;
 
-      const users = await query.all(sql, params);
+      const sql = `SELECT email, name, role, is_active, sso_attributes, last_login_at, created_at FROM admin_users ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+      const users = await query.all(sql, [...params, limit, offset]);
 
       // Auto-enrich generic names with real campus names from EPrints database
       for (const u of users) {
@@ -40,10 +45,71 @@ export class UserController {
         }
       }
 
-      res.json({ users, total: users.length });
+      res.json({
+        users,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      });
     } catch (err: any) {
       console.error('[UserController.listUsers] Error:', err);
       res.status(500).json({ error: { code: 'DB_ERROR', message: 'Gagal mengambil daftar pengguna.' } });
+    }
+  }
+
+  /**
+   * Export users list as CSV
+   */
+  public static async exportCsv(req: Request, res: Response): Promise<void> {
+    try {
+      const search = (req.query.search as string || '').trim();
+      const role = (req.query.role as string || '').trim().toUpperCase();
+
+      let whereSql = ' WHERE 1=1';
+      const params: any[] = [];
+
+      if (search) {
+        whereSql += ' AND (email LIKE ? OR name LIKE ?)';
+        params.push(`%${search}%`, `%${search}%`);
+      }
+
+      if (role && role !== 'ALL') {
+        whereSql += ' AND role = ?';
+        params.push(role);
+      }
+
+      const users = await query.all(
+        `SELECT email, name, role, is_active, last_login_at, created_at FROM admin_users ${whereSql} ORDER BY created_at DESC`,
+        params
+      );
+
+      const headers = ['Nama Civitas', 'Email Resmi UMS', 'Hak Akses (Role)', 'Status Akun', 'Terakhir Login', 'Waktu Terdaftar'];
+
+      const escapeCsv = (val: any) => {
+        if (val === null || val === undefined) return '""';
+        const str = String(val).replace(/"/g, '""');
+        return `"${str}"`;
+      };
+
+      const rows = users.map((u) => [
+        escapeCsv(u.name),
+        escapeCsv(u.email),
+        escapeCsv(u.role),
+        escapeCsv(u.is_active === 1 ? 'Aktif' : 'Nonaktif'),
+        escapeCsv(u.last_login_at || '-'),
+        escapeCsv(u.created_at || '-'),
+      ]);
+
+      const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+      const filename = `daftar-pengguna-ums-${new Date().toISOString().slice(0, 10)}.csv`;
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(csv);
+    } catch (err: any) {
+      console.error('[UserController.exportCsv] Error:', err);
+      res.status(500).json({ error: { code: 'DB_ERROR', message: 'Gagal mengekspor data pengguna.' } });
     }
   }
 

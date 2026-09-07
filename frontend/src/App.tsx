@@ -17,12 +17,45 @@ export const App: React.FC = () => {
   });
   const [viewMode, setViewMode] = useState<'PATRON' | 'ADMIN'>(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('view') === 'admin' || params.get('sso') || params.get('error') || params.get('sso_pending')) {
+    const path = window.location.pathname.toLowerCase();
+    if (
+      path.startsWith('/admin') ||
+      path.startsWith('/login') ||
+      path.startsWith('/pustakawan') ||
+      params.get('view') === 'admin' ||
+      params.get('sso') ||
+      params.get('error') ||
+      params.get('sso_pending')
+    ) {
       return 'ADMIN';
     }
     return 'PATRON';
   });
   const [isClaimModalOpen, setIsClaimModalOpen] = useState<boolean>(false);
+
+  // Sync route on popstate (browser back/forward button)
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const path = window.location.pathname.toLowerCase();
+      if (
+        path.startsWith('/admin') ||
+        path.startsWith('/login') ||
+        path.startsWith('/pustakawan') ||
+        params.get('view') === 'admin' ||
+        params.get('sso') ||
+        params.get('error') ||
+        params.get('sso_pending')
+      ) {
+        setViewMode('ADMIN');
+      } else {
+        setViewMode('PATRON');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Check patron session on load
   const verifyPatronSession = async () => {
@@ -45,10 +78,10 @@ export const App: React.FC = () => {
   useEffect(() => {
     verifyPatronSession();
 
-    // Check session status every 30 seconds
+    // Check session status every 5 seconds for fast response to revocation or expiry
     const interval = setInterval(() => {
       verifyPatronSession();
-    }, 30000);
+    }, 5000);
 
     return () => clearInterval(interval);
   }, []);
@@ -66,8 +99,14 @@ export const App: React.FC = () => {
         session={session}
         isAdmin={viewMode === 'ADMIN'}
         onLogoutPatron={handleLogoutPatron}
-        onOpenAdmin={() => setViewMode('ADMIN')}
-        onOpenPatron={() => setViewMode('PATRON')}
+        onOpenAdmin={() => {
+          setViewMode('ADMIN');
+          window.history.pushState({}, '', '/admin');
+        }}
+        onOpenPatron={() => {
+          setViewMode('PATRON');
+          window.history.pushState({}, '', '/');
+        }}
         onOpenClaimModal={() => setIsClaimModalOpen(true)}
       />
 
@@ -79,7 +118,12 @@ export const App: React.FC = () => {
               onOpenClaimModal={() => setIsClaimModalOpen(true)}
             />
           ) : (
-            <AdminView onBackToPatron={() => setViewMode('PATRON')} />
+            <AdminView
+              onBackToPatron={() => {
+                setViewMode('PATRON');
+                window.history.pushState({}, '', '/');
+              }}
+            />
           )}
         </div>
       </main>

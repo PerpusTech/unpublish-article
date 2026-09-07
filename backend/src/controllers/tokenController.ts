@@ -67,20 +67,46 @@ export class TokenController {
   }
 
   /**
-   * Admin lists active and pending tokens
+   * Admin lists active and pending tokens with pagination
    */
   public static async listTokens(req: Request, res: Response): Promise<void> {
     const status = (req.query.status as string) || 'ALL';
     const search = req.query.search as string;
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
 
     try {
-      const tokens = await TokenService.listTokens({ status, search });
-      res.json({ tokens });
+      const result = await TokenService.listTokens({ status, search, page, limit });
+      res.json(result);
     } catch (err: any) {
       res.status(500).json({
         error: {
           code: 'INTERNAL_ERROR',
           message: err.message || 'Gagal memuat daftar token.'
+        }
+      });
+    }
+  }
+
+  /**
+   * Export tokens as CSV
+   */
+  public static async exportCsv(req: Request, res: Response): Promise<void> {
+    const status = (req.query.status as string) || 'ALL';
+    const search = req.query.search as string;
+
+    try {
+      const csv = await TokenService.exportCsv({ status, search });
+      const filename = `tiket-pemustaka-ums-${new Date().toISOString().slice(0, 10)}.csv`;
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(csv);
+    } catch (err: any) {
+      res.status(500).json({
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: err.message || 'Gagal mengekspor data tiket.'
         }
       });
     }
@@ -133,10 +159,21 @@ export class TokenController {
     const id = getParam(req.params.id);
 
     try {
+      const token = await TokenService.getTokenById(id);
       const ok = await TokenService.revokeSession(id);
       if (!ok) {
         res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Token tidak ditemukan.' } });
         return;
+      }
+
+      if (token) {
+        await AuditService.logAction({
+          tokenId: token.id,
+          patronNim: token.patron_nim,
+          patronName: token.patron_name,
+          action: 'REVOKE_TOKEN',
+          ipAddress: '127.0.0.1'
+        });
       }
 
       res.json({ success: true, message: 'Token berhasil dicabut.' });

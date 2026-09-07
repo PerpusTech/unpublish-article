@@ -287,31 +287,52 @@ export class TokenService {
     return res.changes > 0;
   }
 
+  public static async getTokenById(tokenId: string): Promise<TokenRecord | undefined> {
+    return await query.get<TokenRecord>('SELECT * FROM tokens WHERE id = ?', [tokenId]);
+  }
+
   /**
-   * Gets list of tokens for admin monitoring
+   * Gets paginated list of tokens for admin monitoring
    */
-  public static async listTokens(filter?: { status?: string; search?: string }): Promise<TokenRecord[]> {
-    let sql = 'SELECT * FROM tokens WHERE 1=1';
+  public static async listTokens(filter?: {
+    status?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    tokens: TokenRecord[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    let whereSql = ' WHERE 1=1';
     const params: any[] = [];
 
     if (filter?.status && filter.status !== 'ALL') {
-      sql += ' AND status = ?';
+      whereSql += ' AND status = ?';
       params.push(filter.status);
     }
 
     if (filter?.search) {
-      sql += ' AND (patron_name LIKE ? OR patron_nim LIKE ? OR token_code LIKE ?)';
+      whereSql += ' AND (patron_name LIKE ? OR patron_nim LIKE ? OR token_code LIKE ? OR notes LIKE ?)';
       const term = `%${filter.search.trim()}%`;
-      params.push(term, term, term);
+      params.push(term, term, term, term);
     }
 
-    sql += ' ORDER BY created_at DESC LIMIT 100';
+    const countRow = await query.get<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM tokens ${whereSql}`, params);
+    const total = countRow?.cnt || 0;
 
-    const tokens = await query.all<TokenRecord>(sql, params);
+    const page = Math.max(1, filter?.page || 1);
+    const limit = Math.max(1, Math.min(100, filter?.limit || 10));
+    const offset = (page - 1) * limit;
+
+    const sql = `SELECT * FROM tokens ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+    const tokens = await query.all<TokenRecord>(sql, [...params, limit, offset]);
     const now = new Date().getTime();
 
-    // Attach remaining seconds
-    return tokens.map((t) => {
+    // Attach remaining seconds and handle expired
+    const processedTokens = tokens.map((t) => {
       if (t.status === 'ACTIVE' && t.expires_at) {
         const exp = new Date(t.expires_at).getTime();
         t.remaining_seconds = Math.max(0, Math.floor((exp - now) / 1000));
@@ -321,5 +342,73 @@ export class TokenService {
       }
       return t;
     });
+
+    return {
+      tokens: processedTokens,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
+    };
+  }
+
+  /**
+   * Export tokens list as CSV
+   */
+  public static async exportCsv(filter?: { status?: string; search?: string }): Promise<string> {
+    let whereSql = ' WHERE 1=1';
+    const params: any[] = [];
+
+    if (filter?.status && filter.status !== 'ALL') {
+      whereSql += ' AND status = ?';
+      params.push(filter.status);
+    }
+
+    if (filter?.search) {
+      whereSql += ' AND (patron_name LIKE ? OR patron_nim LIKE ? OR token_code LIKE ? OR notes LIKE ?)';
+      const term = `%${filter.search.trim()}%`;
+      params.push(term, term, term, term);
+    }
+
+    const tokens = await query.all<TokenRecord>(
+      `SELECT * FROM tokens ${whereSql} ORDER BY created_at DESC`,
+      params
+    );
+
+    const headers = [
+      'Kode Token',
+      'Nama Pemustaka',
+      'NIM/NIP',
+      'Status',
+      'Durasi Awal (Menit)',
+      'Perpanjangan (Menit)',
+      'Diterbitkan Oleh',
+      'Waktu Diterbitkan',
+      'Waktu Klaim',
+      'Waktu Kedaluwarsa',
+      'Catatan',
+    ];
+
+    const escapeCsv = (val: any) => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const rows = tokens.map((t) => [
+      escapeCsv(t.token_code),
+      escapeCsv(t.patron_name),
+      escapeCsv(t.patron_nim),
+      escapeCsv(t.status),
+      escapeCsv(t.duration_minutes),
+      escapeCsv(t.extended_minutes || 0),
+      escapeCsv(t.created_by_admin),
+      escapeCsv(t.created_at),
+      escapeCsv(t.claimed_at || '-'),
+      escapeCsv(t.expires_at || '-'),
+      escapeCsv(t.notes || '-'),
+    ]);
+
+    return [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
   }
 }

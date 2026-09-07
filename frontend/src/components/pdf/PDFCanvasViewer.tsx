@@ -56,6 +56,29 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Active session heartbeat: check every 3 seconds to instantly terminate reading if session is revoked by librarian
+  useEffect(() => {
+    let isMounted = true;
+    const checkStatus = async () => {
+      try {
+        const res = await api.getSessionStatus();
+        if (isMounted && (!res.isActive || !res.session)) {
+          alert(res.reason || 'Sesi membaca Anda telah dicabut oleh petugas perpustakaan.');
+          localStorage.removeItem('ums_patron_session');
+          localStorage.removeItem('ums_patron_token_id');
+          onClose();
+          window.location.reload();
+        }
+      } catch {}
+    };
+
+    const interval = setInterval(checkStatus, 3000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [onClose]);
+
   return createPortal(
     <div
       className="modal-backdrop"
@@ -114,23 +137,84 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            {/* Zoom Controls */}
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                backgroundColor: 'rgba(15, 23, 42, 0.8)',
+                border: '1px solid #334155',
+                borderRadius: 8,
+                padding: 3,
+                gap: 4,
+              }}
+            >
               <button
                 type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setZoom((z) => Math.max(70, z - 15))}
-                title="Perkecil"
+                onClick={() => setZoom((z) => Math.max(50, z - 15))}
+                title="Perkecil (Zoom Out)"
+                style={{
+                  width: 28,
+                  height: 28,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#1e293b',
+                  color: '#e2e8f0',
+                  border: '1px solid #475569',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                  fontSize: 16,
+                  lineHeight: 1,
+                  transition: 'background 0.15s ease',
+                }}
               >
-                -
+                −
               </button>
-              <span style={{ fontFamily: 'var(--font-mono)', minWidth: 40, textAlign: 'center' }}>
-                {zoom}%
-              </span>
               <button
                 type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setZoom((z) => Math.min(180, z + 15))}
-                title="Perbesar"
+                onClick={() => setZoom(100)}
+                title="Klik untuk reset zoom ke 100%"
+                style={{
+                  minWidth: 54,
+                  height: 28,
+                  padding: '0 8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'transparent',
+                  color: '#93c5fd',
+                  border: 'none',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                {zoom}%
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoom((z) => Math.min(250, z + 15))}
+                title="Perbesar (Zoom In)"
+                style={{
+                  width: 28,
+                  height: 28,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#1e293b',
+                  color: '#e2e8f0',
+                  border: '1px solid #475569',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                  fontSize: 16,
+                  lineHeight: 1,
+                  transition: 'background 0.15s ease',
+                }}
               >
                 +
               </button>
@@ -140,9 +224,20 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={onClose}
-              style={{ backgroundColor: '#334155', color: '#fff', borderColor: '#475569' }}
+              style={{
+                backgroundColor: '#334155',
+                color: '#fff',
+                borderColor: '#475569',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 14px',
+                fontWeight: 600,
+              }}
             >
-              Tutup Pembaca (Esc) ✕
+              <span>Tutup Pembaca</span>
+              <span style={{ opacity: 0.7, fontSize: 11 }}>(Esc)</span>
+              <span>✕</span>
             </button>
           </div>
         </div>
@@ -152,21 +247,27 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
           style={{
             flex: 1,
             position: 'relative',
-            overflow: 'hidden',
+            overflow: 'auto',
             display: 'flex',
             justifyContent: 'center',
-            backgroundColor: '#334155',
+            alignItems: 'stretch',
+            backgroundColor: '#1e293b',
+            padding: '12px 16px',
           }}
         >
           <div
             style={{
               position: 'relative',
-              width: `${zoom}%`,
-              maxWidth: '1200px',
-              height: '100%',
+              width: `${Math.round(960 * (zoom / 100))}px`,
+              minWidth: '320px',
+              maxWidth: 'none',
+              minHeight: '100%',
               backgroundColor: '#ffffff',
-              boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)',
+              boxShadow: '0 10px 40px rgba(0, 0, 0, 0.6)',
+              borderRadius: 4,
               overflow: 'hidden',
+              flexShrink: 0,
+              transition: 'width 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
             }}
           >
             {/* The Document View Frame */}

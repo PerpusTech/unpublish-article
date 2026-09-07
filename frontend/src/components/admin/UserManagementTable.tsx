@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { api, UserItem } from '../../services/api';
 import { UserModal } from './UserModal';
+import { PaginationControls } from '../common/PaginationControls';
 
 interface UserManagementTableProps {
   currentAdminEmail?: string;
@@ -16,6 +18,12 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [total, setTotal] = useState<number>(0);
+  const [totalPages, setTotalPages] = useState<number>(1);
+
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
@@ -24,24 +32,46 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
   // Action loading per row
   const [actionLoadingEmail, setActionLoadingEmail] = useState<string | null>(null);
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      const data = await api.listUsers({ search: searchQuery, role: roleFilter });
-      setUsers(data);
-    } catch (err: any) {
-      onShowToast(err.message || 'Gagal memuat pengguna', 'danger');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const fetchUsers = useCallback(
+    async (targetPage = currentPage, targetPageSize = pageSize) => {
+      setLoading(true);
+      try {
+        const res = await api.listUsers({
+          search: searchQuery.trim() || undefined,
+          role: roleFilter !== 'ALL' ? roleFilter : undefined,
+          page: targetPage,
+          limit: targetPageSize,
+        });
+
+        setUsers(res.users || []);
+        setTotal(res.total || 0);
+        setTotalPages(res.totalPages || 1);
+        setCurrentPage(res.page || targetPage);
+      } catch (err: any) {
+        onShowToast(err.message || 'Gagal memuat pengguna', 'danger');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [searchQuery, roleFilter, currentPage, pageSize, onShowToast]
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchUsers();
+      fetchUsers(1, pageSize);
     }, 250);
     return () => clearTimeout(timer);
-  }, [searchQuery, roleFilter]);
+  }, [searchQuery, roleFilter, pageSize]);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || newPage > totalPages || newPage === currentPage || loading) return;
+    fetchUsers(newPage, pageSize);
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    fetchUsers(1, newSize);
+  };
 
   // Quick toggle role: ADMIN <-> USER
   const handleToggleRole = async (user: UserItem) => {
@@ -110,6 +140,11 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
     return currentAdminEmail?.toLowerCase() === email.toLowerCase();
   };
 
+  const exportUrl = api.getUsersExportUrl({
+    search: searchQuery.trim() || undefined,
+    role: roleFilter !== 'ALL' ? roleFilter : undefined,
+  });
+
   return (
     <div className="animated-tab-content">
       {/* Search & Actions Toolbar */}
@@ -123,7 +158,7 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
           marginBottom: 16,
         }}
       >
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, minWidth: 280 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, minWidth: 280, flexWrap: 'wrap' }}>
           {/* Real-time Search Input */}
           <div style={{ position: 'relative', flex: 1, maxWidth: 360 }}>
             <span
@@ -185,23 +220,39 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
               className={`pill-btn ${roleFilter === 'ADMIN' ? 'active' : ''}`}
               onClick={() => setRoleFilter('ADMIN')}
             >
-              Admin ({users.filter((u) => u.role === 'ADMIN' || u.role === 'SUPER_ADMIN').length})
+              Admin
             </button>
             <button
               type="button"
               className={`pill-btn ${roleFilter === 'USER' ? 'active' : ''}`}
               onClick={() => setRoleFilter('USER')}
             >
-              User Biasa ({users.filter((u) => u.role === 'USER').length})
+              User Biasa
             </button>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Export CSV Button */}
+          <a
+            href={exportUrl}
+            className="btn btn-secondary btn-sm"
+            download
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}
+            title="Unduh daftar pengguna format CSV"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span>Ekspor CSV ({total.toLocaleString('id-ID')})</span>
+          </a>
+
           <button
             type="button"
             className="btn btn-secondary btn-sm"
-            onClick={fetchUsers}
+            onClick={() => fetchUsers()}
             disabled={loading}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
@@ -240,6 +291,19 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Top Pagination */}
+      <PaginationControls
+        position="top"
+        currentPage={currentPage}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        totalItems={total}
+        itemLabel="pengguna"
+        onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
+        loading={loading}
+      />
 
       {/* Users Table */}
       <div className="table-responsive" style={{ backgroundColor: 'var(--color-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
@@ -443,6 +507,19 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
         </table>
       </div>
 
+      {/* Bottom Pagination */}
+      <PaginationControls
+        position="bottom"
+        currentPage={currentPage}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        totalItems={total}
+        itemLabel="pengguna"
+        onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
+        loading={loading}
+      />
+
       {/* User Modal for Create & Edit */}
       <UserModal
         isOpen={isModalOpen}
@@ -458,105 +535,106 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
       />
 
       {/* Modal Detail Info SSO & Identitas Civitas */}
-      {inspectingSsoUser && (
-        <div className="modal-overlay" style={{ zIndex: 1100 }}>
-          <div className="modal-content animated-modal" style={{ maxWidth: 540 }}>
-            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-primary)' }}>
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
-                <span>Detail Autentikasi SSO & Data Civitas</span>
-              </h3>
-              <button
-                type="button"
-                className="btn-close"
-                onClick={() => setInspectingSsoUser(null)}
-                style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--color-text-muted)' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: 13.5, marginTop: 12 }}>
-              <div style={{ background: 'var(--color-surface-subtle)', padding: '14px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
-                <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--color-text-muted)', fontWeight: 700 }}>
-                  Nama Lengkap Civitas
-                </div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--color-text)', marginTop: 2 }}>
-                  {inspectingSsoUser.name}
-                </div>
+      {inspectingSsoUser &&
+        createPortal(
+          <div className="modal-backdrop animated-fade-in" onClick={() => setInspectingSsoUser(null)}>
+            <div className="modal-dialog animated-modal" style={{ maxWidth: 540 }} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3 className="modal-title" style={{ fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-primary)' }}>
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  <span>Detail Autentikasi SSO & Data Civitas</span>
+                </h3>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setInspectingSsoUser(null)}
+                  style={{ padding: '4px 8px', lineHeight: 1 }}
+                >
+                  ✕
+                </button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div style={{ background: 'var(--color-surface-subtle)', padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 700 }}>Email Resmi SSO</div>
-                  <div style={{ fontWeight: 600, marginTop: 4, wordBreak: 'break-all', fontSize: 12.5, fontFamily: 'var(--font-mono)' }}>{inspectingSsoUser.email}</div>
-                </div>
-                <div style={{ background: 'var(--color-surface-subtle)', padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 700 }}>Role Akses Sistem</div>
-                  <div style={{ fontWeight: 800, marginTop: 4, color: inspectingSsoUser.role === 'SUPER_ADMIN' ? 'var(--color-primary)' : inspectingSsoUser.role === 'ADMIN' ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
-                    {inspectingSsoUser.role === 'SUPER_ADMIN' ? 'SUPER ADMIN' : inspectingSsoUser.role === 'ADMIN' ? 'ADMIN LAYANAN' : 'USER PEMUSTAKA'}
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: 13.5 }}>
+                <div style={{ background: 'var(--color-surface-subtle)', padding: '14px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--color-text-muted)', fontWeight: 700 }}>
+                    Nama Lengkap Civitas
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--color-text)', marginTop: 2 }}>
+                    {inspectingSsoUser.name}
                   </div>
                 </div>
-              </div>
 
-              {/* Rincian Atribut SSO / Sumber Data */}
-              <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 12 }}>
-                <div style={{ fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-text)', fontSize: 13 }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="16" y1="13" x2="8" y2="13" />
-                    <line x1="16" y1="17" x2="8" y2="17" />
-                    <polyline points="10 9 9 9 8 9" />
-                  </svg>
-                  <span>Atribut Server CAS SSO (auth.ums.ac.id)</span>
-                </div>
-
-                {inspectingSsoUser.sso_attributes ? (() => {
-                  try {
-                    const attrs = JSON.parse(inspectingSsoUser.sso_attributes);
-                    const entries = Object.entries(attrs);
-                    if (entries.length === 0) throw new Error();
-                    return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {entries.map(([k, v]) => (
-                          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 12px', background: 'var(--color-surface-subtle)', borderRadius: 'var(--radius-sm)', fontSize: 12 }}>
-                            <span style={{ color: 'var(--color-text-muted)', fontWeight: 600 }}>{k}</span>
-                            <span style={{ fontWeight: 700, color: 'var(--color-text)' }}>{String(v)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  } catch {
-                    return null;
-                  }
-                })() : (
-                  <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', padding: '12px 14px', borderRadius: 'var(--radius-sm)', fontSize: 12.5, color: 'var(--color-text)', lineHeight: 1.5 }}>
-                    <div style={{ fontWeight: 700, color: 'var(--color-primary)', marginBottom: 3 }}>Autentikasi CAS SSO 2.0 Aktif</div>
-                    <div>
-                      Server SSO CAS UMS memvalidasi tiket login via protokol CAS 2.0 XML (<code>&lt;cas:user&gt;</code>). Nama lengkap civitas disinkronisasi secara otomatis dari database repositori EPrints Kampus UMS (<code>etd2018</code>).
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={{ background: 'var(--color-surface-subtle)', padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 700 }}>Email Resmi SSO</div>
+                    <div style={{ fontWeight: 600, marginTop: 4, wordBreak: 'break-all', fontSize: 12.5, fontFamily: 'var(--font-mono)' }}>{inspectingSsoUser.email}</div>
+                  </div>
+                  <div style={{ background: 'var(--color-surface-subtle)', padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 700 }}>Role Akses Sistem</div>
+                    <div style={{ fontWeight: 800, marginTop: 4, color: inspectingSsoUser.role === 'SUPER_ADMIN' ? 'var(--color-primary)' : inspectingSsoUser.role === 'ADMIN' ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
+                      {inspectingSsoUser.role === 'SUPER_ADMIN' ? 'SUPER ADMIN' : inspectingSsoUser.role === 'ADMIN' ? 'ADMIN LAYANAN' : 'USER PEMUSTAKA'}
                     </div>
                   </div>
-                )}
+                </div>
+
+                {/* Rincian Atribut SSO / Sumber Data */}
+                <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 12 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-text)', fontSize: 13 }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                      <polyline points="10 9 9 9 8 9" />
+                    </svg>
+                    <span>Atribut Server CAS SSO (auth.ums.ac.id)</span>
+                  </div>
+
+                  {inspectingSsoUser.sso_attributes ? (() => {
+                    try {
+                      const attrs = JSON.parse(inspectingSsoUser.sso_attributes);
+                      const entries = Object.entries(attrs);
+                      if (entries.length === 0) throw new Error();
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {entries.map(([k, v]) => (
+                            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 12px', background: 'var(--color-surface-subtle)', borderRadius: 'var(--radius-sm)', fontSize: 12 }}>
+                              <span style={{ color: 'var(--color-text-muted)', fontWeight: 600 }}>{k}</span>
+                              <span style={{ fontWeight: 700, color: 'var(--color-text)' }}>{String(v)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    } catch {
+                      return null;
+                    }
+                  })() : (
+                    <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', padding: '12px 14px', borderRadius: 'var(--radius-sm)', fontSize: 12.5, color: 'var(--color-text)', lineHeight: 1.5 }}>
+                      <div style={{ fontWeight: 700, color: 'var(--color-primary)', marginBottom: 3 }}>Autentikasi CAS SSO 2.0 Aktif</div>
+                      <div>
+                        Server SSO CAS UMS memvalidasi tiket login via protokol CAS 2.0 XML (<code>&lt;cas:user&gt;</code>). Nama lengkap civitas disinkronisasi secara otomatis dari database repositori EPrints Kampus UMS (<code>etd2018</code>).
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border)', paddingTop: 10 }}>
+                  Login Terakhir: {inspectingSsoUser.last_login_at ? new Date(inspectingSsoUser.last_login_at).toLocaleString('id-ID') : 'Belum pernah login'}
+                </div>
               </div>
 
-              <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border)', paddingTop: 10 }}>
-                Login Terakhir: {inspectingSsoUser.last_login_at ? new Date(inspectingSsoUser.last_login_at).toLocaleString('id-ID') : 'Belum pernah login'}
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setInspectingSsoUser(null)}>
+                  Tutup
+                </button>
               </div>
             </div>
-
-            <div className="modal-footer" style={{ borderTop: '1px solid var(--color-border)', paddingTop: 14, marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setInspectingSsoUser(null)}>
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 };
-

@@ -26,8 +26,6 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
 
   // Login state
   const [ssoLoading, setSsoLoading] = useState<boolean>(false);
-  const [devEmail, setDevEmail] = useState<string>('pustakawan@ums.ac.id');
-  const [devLoading, setDevLoading] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
   // Toast feedback state
@@ -60,8 +58,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
   const fetchTokens = async () => {
     setTokensLoading(true);
     try {
-      const list = await api.listTokens();
-      setTokens(list);
+      const res = await api.listTokens({ limit: 1000 });
+      setTokens(res.tokens || []);
     } catch (err) {
       console.error('Failed to load tokens:', err);
     } finally {
@@ -87,7 +85,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
       setLoginError(decodeURIComponent(ssoPending));
     } else if (ssoSuccess === 'success') {
       showToast('Berhasil masuk melalui SSO UMS.', 'success');
-      window.history.replaceState({}, document.title, window.location.pathname + '?view=admin');
+      window.history.replaceState({}, document.title, '/admin');
     }
 
     checkAdminAuth();
@@ -110,30 +108,19 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
     }
   };
 
-  const handleDevLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setDevLoading(true);
-    setLoginError(null);
-    try {
-      const res = await api.devLogin(devEmail);
-      if (res.admin) {
-        setAdminUser(res.admin);
-        showToast('Berhasil masuk melalui Akun Pustakawan (Mode Intranet).', 'success');
-        fetchTokens();
-      } else {
-        setLoginError(res.error?.message || 'Gagal masuk. Pastikan email terdaftar sebagai Admin.');
-      }
-    } catch (err: any) {
-      setLoginError(err.message || 'Gagal masuk.');
-    } finally {
-      setDevLoading(false);
-    }
-  };
-
   const handleLogout = async () => {
-    await api.adminLogout();
-    setAdminUser(null);
-    showToast('Sesi Meja Layanan telah berakhir.', 'success');
+    try {
+      const res = await api.adminLogout();
+      setAdminUser(null);
+      if (res?.casLogoutUrl) {
+        window.location.href = res.casLogoutUrl;
+      } else {
+        showToast('Sesi Meja Layanan telah berakhir.', 'success');
+      }
+    } catch {
+      setAdminUser(null);
+      showToast('Sesi Meja Layanan telah berakhir.', 'success');
+    }
   };
 
   if (loading) {
@@ -242,39 +229,6 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
           >
             ← Kembali ke Katalog Pemustaka
           </button>
-        </div>
-
-        {/* Fallback accordion jika SSO 403 / localhost belum di-whitelist Biro TI */}
-        <div style={{ marginTop: 22, borderTop: '1px dashed var(--color-border)', paddingTop: 14 }}>
-          <details style={{ fontSize: 12.5, color: 'var(--color-text-muted)' }}>
-            <summary style={{ cursor: 'pointer', textAlign: 'center', userSelect: 'none', fontWeight: 600, color: 'var(--color-primary)' }}>
-              Kendala SSO (403 Forbidden)? Masuk Mode Intranet
-            </summary>
-            <form onSubmit={handleDevLogin} style={{ marginTop: 12 }}>
-              <div style={{ marginBottom: 10 }}>
-                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, marginBottom: 4, color: 'var(--color-text)' }}>
-                  Email Pustakawan (@ums.ac.id):
-                </label>
-                <input
-                  type="email"
-                  className="input-search"
-                  value={devEmail}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDevEmail(e.target.value)}
-                  placeholder="pustakawan@ums.ac.id"
-                  style={{ width: '100%', padding: '9px 12px', fontSize: 13 }}
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                className="btn btn-secondary"
-                disabled={devLoading}
-                style={{ width: '100%', padding: '10px', fontSize: 12.5, fontWeight: 700 }}
-              >
-                {devLoading ? 'Memverifikasi...' : 'Masuk Meja Layanan (Bypass Whitelist)'}
-              </button>
-            </form>
-          </details>
         </div>
 
         <div
@@ -534,6 +488,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
           loading={tokensLoading}
           onRefresh={fetchTokens}
           onOpenCreate={() => setIsGeneratorOpen(true)}
+          onShowToast={showToast}
         />
       )}
 

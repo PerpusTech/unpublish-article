@@ -73,6 +73,11 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
   };
 
   useEffect(() => {
+    if (!session) {
+      setSelectedArticle(null);
+      setActivePdf(null);
+      setIsBrowseModalOpen(false);
+    }
     loadArticles(1, pageSize);
   }, [session, statusFilter, activeBrowseFilter]);
 

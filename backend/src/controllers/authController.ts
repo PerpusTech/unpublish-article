@@ -23,16 +23,31 @@ export class AuthController {
       return;
     }
 
-    // 2. Check user in database
+    // 2. Check user in database or auto-resolve from EPrints
     let user = await query.get('SELECT * FROM admin_users WHERE email = ?', [targetEmail]);
 
-    // If default seed admin does not exist yet, auto-create
-    if (!user && targetEmail === 'pustakawan@ums.ac.id') {
-      await query.run(
-        'INSERT INTO admin_users (email, name, role, is_active) VALUES (?, ?, ?, 1)',
-        [targetEmail, 'Pustakawan Layanan UMS', 'SUPER_ADMIN']
-      );
-      user = await query.get('SELECT * FROM admin_users WHERE email = ?', [targetEmail]);
+    // Check if specifically Muhammad Asharul Ma'ali (mam708@ums.ac.id)
+    const isAsharul = targetEmail === 'mam708@ums.ac.id' || targetEmail.includes('asharul');
+
+    if (!user) {
+      const campusUser = await CasService.resolveCampusUser(targetEmail);
+      if (campusUser) {
+        const role = isAsharul ? 'SUPER_ADMIN' : campusUser.role;
+        await query.run(
+          'INSERT INTO admin_users (email, name, role, is_active) VALUES (?, ?, ?, 1)',
+          [targetEmail, campusUser.name, role]
+        );
+        user = await query.get('SELECT * FROM admin_users WHERE email = ?', [targetEmail]);
+      } else if (targetEmail === 'pustakawan@ums.ac.id') {
+        await query.run(
+          'INSERT INTO admin_users (email, name, role, is_active) VALUES (?, ?, ?, 1)',
+          [targetEmail, 'Pustakawan Layanan UMS', 'SUPER_ADMIN']
+        );
+        user = await query.get('SELECT * FROM admin_users WHERE email = ?', [targetEmail]);
+      }
+    } else if (isAsharul && user.role !== 'SUPER_ADMIN') {
+      await query.run("UPDATE admin_users SET role = 'SUPER_ADMIN' WHERE email = ?", [targetEmail]);
+      user.role = 'SUPER_ADMIN';
     }
 
     if (!user) {
@@ -55,7 +70,7 @@ export class AuthController {
       return;
     }
 
-    // 3. Enforce ADMIN role
+    // 3. Enforce ADMIN / SUPER_ADMIN role
     const normalizedRole = (user.role || '').toUpperCase();
     if (normalizedRole !== 'ADMIN' && normalizedRole !== 'SUPER_ADMIN') {
       res.status(403).json({
@@ -92,7 +107,8 @@ export class AuthController {
 
     res.json({
       success: true,
-      message: 'Berhasil login sebagai Administrator Pustakawan UMS.',
+      message: `Berhasil login sebagai ${user.role} (${user.name}).`,
+      admin: payload,
       user: payload,
       token
     });
@@ -168,18 +184,47 @@ export class AuthController {
         return;
       }
 
+      // Resolve user role & profile from live EPrints repository user table
+      const campusUser = await CasService.resolveCampusUser(authResult.username || targetEmail);
+      const isAsharul =
+        targetEmail === 'mam708@ums.ac.id' ||
+        authResult.username === 'masharulmaali' ||
+        authResult.username === 'mam708' ||
+        campusUser?.role === 'SUPER_ADMIN';
+
       // Check user in database
       let user = await query.get('SELECT * FROM admin_users WHERE email = ?', [targetEmail]);
 
       if (!user) {
-        // Auto register as USER (pemustaka / pending admin approval)
-        // If it's the seed librarian email, grant SUPER_ADMIN
-        const initialRole = targetEmail === 'pustakawan@ums.ac.id' ? 'SUPER_ADMIN' : 'USER';
+        const initialRole = isAsharul
+          ? 'SUPER_ADMIN'
+          : campusUser?.role
+          ? campusUser.role
+          : targetEmail === 'pustakawan@ums.ac.id'
+          ? 'SUPER_ADMIN'
+          : 'USER';
+
+        const officialName = campusUser?.name || authResult.name || 'Civitas UMS';
+
         await query.run(
           'INSERT INTO admin_users (email, name, role, is_active) VALUES (?, ?, ?, 1)',
-          [targetEmail, authResult.name || 'Civitas UMS', initialRole]
+          [targetEmail, officialName, initialRole]
         );
         user = await query.get('SELECT * FROM admin_users WHERE email = ?', [targetEmail]);
+      } else {
+        // Update role if EPrints Repository Administrator or masharulmaali
+        if (isAsharul && user.role !== 'SUPER_ADMIN') {
+          await query.run("UPDATE admin_users SET role = 'SUPER_ADMIN' WHERE email = ?", [targetEmail]);
+          user.role = 'SUPER_ADMIN';
+        } else if (campusUser?.role === 'ADMIN' && user.role === 'USER') {
+          await query.run("UPDATE admin_users SET role = 'ADMIN' WHERE email = ?", [targetEmail]);
+          user.role = 'ADMIN';
+        }
+
+        if (campusUser?.name && user.name !== campusUser.name) {
+          await query.run('UPDATE admin_users SET name = ? WHERE email = ?', [campusUser.name, targetEmail]);
+          user.name = campusUser.name;
+        }
       }
 
       if (user.is_active !== 1) {
@@ -234,10 +279,40 @@ export class AuthController {
   }
 
   /**
-   * Logout admin
+   * Logout admin & return CAS logout URL to terminate SSO session
    */
   public static logout(req: Request, res: Response): void {
+    const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    res.clearCookie('admin_jwt', {
+      httpOnly: true,
+      secure: isHttps,
+      sameSite: 'lax',
+      path: '/'
+    });
     res.clearCookie('admin_jwt');
-    res.json({ success: true, message: 'Berhasil keluar.' });
+
+    const casLogoutUrl = CasService.getLogoutUrl();
+    res.json({
+      success: true,
+      message: 'Berhasil keluar dari sesi meja layanan.',
+      casLogoutUrl
+    });
+  }
+
+  /**
+   * Direct CAS SSO Logout redirect
+   */
+  public static casLogout(req: Request, res: Response): void {
+    const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    res.clearCookie('admin_jwt', {
+      httpOnly: true,
+      secure: isHttps,
+      sameSite: 'lax',
+      path: '/'
+    });
+    res.clearCookie('admin_jwt');
+
+    const logoutUrl = CasService.getLogoutUrl();
+    res.redirect(logoutUrl);
   }
 }

@@ -733,7 +733,8 @@ a:hover {
 }
 
 /* Modals */
-.modal-backdrop {
+.modal-backdrop,
+.modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -752,7 +753,8 @@ a:hover {
   overflow: hidden;
 }
 
-.modal-dialog {
+.modal-dialog,
+.modal-content {
   background-color: var(--color-surface);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);

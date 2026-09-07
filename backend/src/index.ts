@@ -40,11 +40,13 @@ api.post('/auth/dev-login', AuthController.devLogin);
 api.get('/auth/google', AuthController.getGoogleAuthUrl);
 api.get('/auth/cas/login', AuthController.casLogin);
 api.get('/auth/cas/callback', AuthController.casCallback);
+api.get('/auth/cas/logout', AuthController.casLogout);
 api.get('/auth/me', requireAdminAuth, AuthController.me);
 api.post('/auth/logout', AuthController.logout);
 
 api.post('/admin/tokens', requireAdminAuth, TokenController.createToken);
 api.get('/admin/tokens', requireAdminAuth, TokenController.listTokens);
+api.get('/admin/tokens/export', requireAdminAuth, TokenController.exportCsv);
 api.post('/admin/tokens/:id/extend', requireAdminAuth, TokenController.extendToken);
 api.post('/admin/tokens/:id/revoke', requireAdminAuth, TokenController.revokeToken);
 
@@ -53,6 +55,7 @@ api.get('/admin/audit-logs/export', requireAdminAuth, AuditController.exportCsv)
 
 // ================= USER MANAGEMENT ROUTES =================
 api.get('/admin/users', requireAdminAuth, UserController.listUsers);
+api.get('/admin/users/export', requireAdminAuth, UserController.exportCsv);
 api.post('/admin/users', requireAdminAuth, UserController.createUser);
 api.put('/admin/users/:email', requireAdminAuth, UserController.updateUser);
 api.delete('/admin/users/:email', requireAdminAuth, UserController.deleteUser);
@@ -78,7 +81,7 @@ app.use((req, res) => {
 // Periodic token expiration maintenance (every 60s)
 setInterval(async () => {
   try {
-    const activeTokens = await TokenService.listTokens({ status: 'ACTIVE' });
+    const { tokens: activeTokens } = await TokenService.listTokens({ status: 'ACTIVE', limit: 1000 });
     const now = new Date().getTime();
     for (const t of activeTokens) {
       if (t.expires_at && now >= new Date(t.expires_at).getTime()) {
