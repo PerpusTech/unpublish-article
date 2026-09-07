@@ -55,28 +55,16 @@ export async function requirePatronSession(req: Request, res: Response, next: Ne
   const fingerprint = TokenService.createFingerprint(clientIp, userAgent, clientUuid);
   req.fingerprint = fingerprint;
 
-  // Fallbacks for legacy token claims, proxy, or iframe variations
-  const fallbacks: string[] = [
-    TokenService.createFingerprint(clientIp, userAgent),
-    TokenService.createFingerprint(rawIp, userAgent),
-    TokenService.createLegacyFingerprint(clientIp, userAgent, clientUuid),
-    TokenService.createLegacyFingerprint(clientIp, userAgent, undefined),
-    TokenService.createLegacyFingerprint(clientIp, userAgent, 'none'),
-    TokenService.createLegacyFingerprint(rawIp, userAgent, clientUuid),
-    TokenService.createLegacyFingerprint(rawIp, userAgent, undefined),
-    TokenService.createLegacyFingerprint(rawIp, userAgent, 'none'),
-    TokenService.createLegacyFingerprint('127.0.0.1', userAgent),
-    TokenService.createLegacyFingerprint('::1', userAgent),
-    TokenService.createLegacyFingerprint('172.29.0.1', userAgent),
-    TokenService.createFingerprint('172.29.0.1', userAgent),
-    TokenService.createFingerprint('127.0.0.1', userAgent),
-    TokenService.createFingerprint('::1', userAgent),
-  ];
-  if (clientUuid) {
-    fallbacks.push(TokenService.createLegacyFingerprint('127.0.0.1', userAgent, clientUuid));
-    fallbacks.push(TokenService.createLegacyFingerprint('::1', userAgent, clientUuid));
-    fallbacks.push(TokenService.createLegacyFingerprint('172.29.0.1', userAgent, clientUuid));
+  // Strict device binding fallbacks: allow proxy/NAT IP variations ONLY with the matching clientUuid
+  const fallbacks: string[] = [];
+  if (rawIp && rawIp !== clientIp) {
+    fallbacks.push(TokenService.createFingerprint(rawIp, userAgent, clientUuid));
   }
+  fallbacks.push(TokenService.createFingerprint('127.0.0.1', userAgent, clientUuid));
+  fallbacks.push(TokenService.createFingerprint('::1', userAgent, clientUuid));
+  fallbacks.push(TokenService.createFingerprint('172.29.0.1', userAgent, clientUuid));
+  fallbacks.push(TokenService.createLegacyFingerprint(clientIp, userAgent, clientUuid));
+  fallbacks.push(TokenService.createLegacyFingerprint(rawIp, userAgent, clientUuid));
 
   const status = await TokenService.getSessionStatus(tokenId, fingerprint, fallbacks);
 
@@ -101,3 +89,47 @@ export async function requirePatronSession(req: Request, res: Response, next: Ne
   req.patron = status.token;
   next();
 }
+
+export async function optionalPatronSession(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const tokenId = (req.cookies?.patron_token_id ||
+    req.headers['x-patron-token-id'] ||
+    req.query?.token_id ||
+    req.query?.tid) as string;
+
+  if (!tokenId) {
+    return next();
+  }
+
+  try {
+    const clientIp = extractClientIp(req);
+    const rawIp = req.socket.remoteAddress || '127.0.0.1';
+    const userAgent = (Array.isArray(req.headers['user-agent']) ? req.headers['user-agent'][0] : req.headers['user-agent']) || 'Unknown';
+    const clientUuid = (Array.isArray(req.headers['x-client-uuid']) ? req.headers['x-client-uuid'][0] : req.headers['x-client-uuid'])
+      || (req.query?.client_uuid as string)
+      || req.cookies?.client_uuid
+      || undefined;
+
+    const fingerprint = TokenService.createFingerprint(clientIp, userAgent, clientUuid);
+    req.fingerprint = fingerprint;
+
+    const fallbacks: string[] = [];
+    if (rawIp && rawIp !== clientIp) {
+      fallbacks.push(TokenService.createFingerprint(rawIp, userAgent, clientUuid));
+    }
+    fallbacks.push(TokenService.createFingerprint('127.0.0.1', userAgent, clientUuid));
+    fallbacks.push(TokenService.createFingerprint('::1', userAgent, clientUuid));
+    fallbacks.push(TokenService.createFingerprint('172.29.0.1', userAgent, clientUuid));
+    fallbacks.push(TokenService.createLegacyFingerprint(clientIp, userAgent, clientUuid));
+    fallbacks.push(TokenService.createLegacyFingerprint(rawIp, userAgent, clientUuid));
+
+    const status = await TokenService.getSessionStatus(tokenId, fingerprint, fallbacks);
+    if (status.isValid && status.token) {
+      req.patron = status.token;
+    }
+  } catch (e) {
+    // Ignore error in optional session
+  }
+
+  next();
+}
+

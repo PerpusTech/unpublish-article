@@ -4,6 +4,7 @@ import { ArticleCard } from '../components/patron/ArticleCard';
 import { ArticleCardSkeleton } from '../components/patron/ArticleCardSkeleton';
 import { ArticleDetailModal } from '../components/patron/ArticleDetailModal';
 import { PDFCanvasViewer } from '../components/pdf/PDFCanvasViewer';
+import { BrowseItemsModal, BrowseCategory } from '../components/patron/BrowseItemsModal';
 
 interface PatronViewProps {
   session: PatronSession | null;
@@ -19,6 +20,15 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
   const [selectedArticle, setSelectedArticle] = useState<ArticleItem | null>(null);
   const [isCopied, setIsCopied] = useState<boolean>(false);
 
+  // Browse Items State
+  const [isBrowseModalOpen, setIsBrowseModalOpen] = useState<boolean>(false);
+  const [browseCategoryTab, setBrowseCategoryTab] = useState<BrowseCategory>('year');
+  const [activeBrowseFilter, setActiveBrowseFilter] = useState<{
+    category: BrowseCategory;
+    value: string;
+    label: string;
+  } | null>(null);
+
   // PDF Viewer State
   const [activePdf, setActivePdf] = useState<{
     articleId: number;
@@ -26,7 +36,13 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
     title: string;
   } | null>(null);
 
-  const loadArticles = async () => {
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [jumpInput, setJumpInput] = useState<string>('');
+
+  const loadArticles = async (targetPage = currentPage, targetPageSize = pageSize) => {
     if (!session) {
       setArticles([]);
       return;
@@ -37,9 +53,18 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
       const res = await api.searchArticles({
         q: searchQuery.trim() || undefined,
         status: statusFilter,
+        year: activeBrowseFilter?.category === 'year' ? parseInt(activeBrowseFilter.value, 10) : undefined,
+        division: activeBrowseFilter?.category === 'division' ? activeBrowseFilter.value : undefined,
+        type: activeBrowseFilter?.category === 'type' ? activeBrowseFilter.value : undefined,
+        subject: activeBrowseFilter?.category === 'subject' ? activeBrowseFilter.value : undefined,
+        author: activeBrowseFilter?.category === 'author' ? activeBrowseFilter.value : undefined,
+        page: targetPage,
+        limit: targetPageSize,
       });
       setArticles(res.items);
       setTotal(res.total);
+      setTotalPages(res.totalPages || Math.ceil(res.total / targetPageSize) || 1);
+      setCurrentPage(targetPage);
     } catch (err: any) {
       console.error('Error fetching articles:', err);
     } finally {
@@ -48,26 +73,210 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
   };
 
   useEffect(() => {
-    loadArticles();
-  }, [session, statusFilter]);
+    loadArticles(1, pageSize);
+  }, [session, statusFilter, activeBrowseFilter]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    loadArticles();
+    loadArticles(1, pageSize);
   };
 
   const handleClearSearch = () => {
     setSearchQuery('');
     if (session) {
       setLoading(true);
-      api.searchArticles({ status: statusFilter })
+      api.searchArticles({ status: statusFilter, page: 1, limit: pageSize })
         .then((res) => {
           setArticles(res.items);
           setTotal(res.total);
+          setTotalPages(res.totalPages || 1);
+          setCurrentPage(1);
         })
         .catch(console.error)
         .finally(() => setLoading(false));
     }
+  };
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || newPage > totalPages || newPage === currentPage || loading) return;
+    loadArticles(newPage, pageSize);
+    // Smooth scroll to top of search results container
+    const searchSection = document.getElementById('search-catalog-section');
+    if (searchSection) {
+      searchSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    loadArticles(1, newSize);
+  };
+
+  const handleJumpSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const p = parseInt(jumpInput, 10);
+    if (!isNaN(p) && p >= 1 && p <= totalPages) {
+      handlePageChange(p);
+      setJumpInput('');
+    }
+  };
+
+  const getPaginationPages = (current: number, total: number) => {
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    const pages: (number | string)[] = [];
+    pages.push(1);
+
+    if (current > 3) {
+      pages.push('...');
+    }
+
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+
+    if (current < total - 2) {
+      pages.push('...');
+    }
+
+    pages.push(total);
+    return pages;
+  };
+
+  const renderPagination = (position: 'top' | 'bottom') => {
+    if (totalPages <= 1 || articles.length === 0) return null;
+
+    return (
+      <div
+        className="pagination-container"
+        style={position === 'top' ? { marginTop: 0, marginBottom: 18, padding: '12px 18px' } : undefined}
+      >
+        <div className="pagination-info">
+          <span>
+            Menampilkan <strong>{((currentPage - 1) * pageSize) + 1}</strong> - <strong>{Math.min(currentPage * pageSize, total)}</strong> dari <strong>{total.toLocaleString('id-ID')}</strong> naskah
+          </span>
+        </div>
+
+        <div className="pagination-controls">
+          {/* First Page Button */}
+          <button
+            type="button"
+            className="pagination-btn"
+            onClick={() => handlePageChange(1)}
+            disabled={currentPage === 1 || loading}
+            title="Halaman Pertama"
+          >
+            «
+          </button>
+
+          {/* Prev Page Button */}
+          <button
+            type="button"
+            className="pagination-btn"
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1 || loading}
+            title="Halaman Sebelumnya"
+          >
+            ‹
+          </button>
+
+          {/* Page Numbers */}
+          {getPaginationPages(currentPage, totalPages).map((p, idx) => (
+            typeof p === 'number' ? (
+              <button
+                key={`${position}-page-${p}`}
+                type="button"
+                className={`pagination-btn ${p === currentPage ? 'active' : ''}`}
+                onClick={() => handlePageChange(p)}
+                disabled={loading}
+              >
+                {p}
+              </button>
+            ) : (
+              <span key={`${position}-ellipsis-${idx}`} className="pagination-ellipsis">
+                ...
+              </span>
+            )
+          ))}
+
+          {/* Next Page Button */}
+          <button
+            type="button"
+            className="pagination-btn"
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage === totalPages || loading}
+            title="Halaman Berikutnya"
+          >
+            ›
+          </button>
+
+          {/* Last Page Button */}
+          <button
+            type="button"
+            className="pagination-btn"
+            onClick={() => handlePageChange(totalPages)}
+            disabled={currentPage === totalPages || loading}
+            title="Halaman Terakhir"
+          >
+            »
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          {/* Page Size Selector */}
+          <div className="pagination-page-size">
+            <span>Per hal:</span>
+            <select
+              className="pagination-select"
+              value={pageSize}
+              onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+              disabled={loading}
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+            </select>
+          </div>
+
+          {/* Jump to Page */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const p = parseInt(jumpInput, 10);
+              if (!isNaN(p) && p >= 1 && p <= totalPages) {
+                handlePageChange(p);
+                setJumpInput('');
+              }
+            }}
+            className="pagination-jump"
+          >
+            <span>Ke hal:</span>
+            <input
+              type="number"
+              min={1}
+              max={totalPages}
+              className="pagination-jump-input"
+              placeholder={currentPage.toString()}
+              value={jumpInput}
+              onChange={(e) => setJumpInput(e.target.value)}
+              disabled={loading}
+            />
+            <button
+              type="submit"
+              className="btn btn-secondary btn-sm"
+              style={{ height: 34, padding: '0 10px', fontSize: 12 }}
+              disabled={loading || !jumpInput}
+            >
+              Buka
+            </button>
+          </form>
+        </div>
+      </div>
+    );
   };
 
   const handleCopyToken = () => {
@@ -262,7 +471,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
           </div>
 
           {/* Search Bar & Filter Controls (Academic Scholarly Box) */}
-          <div className="search-container">
+          <div id="search-catalog-section" className="search-container">
             <form onSubmit={handleSearch} className="search-row" style={{ position: 'relative' }}>
               <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
                 <div
@@ -285,7 +494,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
                   type="text"
                   className="search-input"
                   style={{ paddingLeft: 42, paddingRight: searchQuery ? 40 : 16 }}
-                  placeholder="Cari naskah: ketik judul karya ilmiah, nama peneliti / pembimbing, kata kunci, atau ID eprint..."
+                  placeholder="Cari naskah: judul, topik, nama penulis, NIM / Nomor Identifikasi, atau ID eprint..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -338,11 +547,75 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
                   </>
                 )}
               </button>
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setBrowseCategoryTab('year');
+                  setIsBrowseModalOpen(true);
+                }}
+                style={{
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  padding: '11px 18px',
+                  backgroundColor: 'var(--color-surface)',
+                  border: '1px solid var(--color-border-dark)',
+                  color: 'var(--color-text)',
+                  cursor: 'pointer',
+                  borderRadius: 'var(--radius-md)',
+                }}
+                title="Buka menu jelajahi naskah berdasarkan tahun, subjek, divisi, jenis, atau penulis"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="12 2 19 21 12 17 5 21 12 2" />
+                </svg>
+                <span>Jelajahi (Browse)</span>
+              </button>
             </form>
 
-            <div className="filter-pills" style={{ marginTop: 14 }}>
+            {/* Browse Categories Quick Bar */}
+            <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', marginRight: 2 }}>
+                Jelajahi Repositori:
+              </span>
+              {[
+                { id: 'year' as BrowseCategory, label: 'Tahun' },
+                { id: 'subject' as BrowseCategory, label: 'Subjek' },
+                { id: 'division' as BrowseCategory, label: 'Divisi / Fakultas' },
+                { id: 'type' as BrowseCategory, label: 'Jenis Naskah' },
+                { id: 'author' as BrowseCategory, label: 'Penulis' },
+              ].map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => {
+                    setBrowseCategoryTab(cat.id);
+                    setIsBrowseModalOpen(true);
+                  }}
+                  className="pill-btn"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    padding: '4px 10px',
+                    fontSize: 12,
+                    backgroundColor: activeBrowseFilter?.category === cat.id ? 'rgba(59, 130, 246, 0.12)' : undefined,
+                    borderColor: activeBrowseFilter?.category === cat.id ? 'var(--color-primary)' : undefined,
+                    color: activeBrowseFilter?.category === cat.id ? 'var(--color-primary)' : undefined,
+                    fontWeight: activeBrowseFilter?.category === cat.id ? 700 : 500,
+                  }}
+                >
+                  <span>{cat.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="filter-pills" style={{ marginTop: 12 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', marginRight: 4 }}>
-                Filter Koleksi:
+                Status Akses:
               </span>
               <button
                 type="button"
@@ -370,6 +643,66 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
                 Terbit Terbuka (Archive)
               </button>
             </div>
+
+            {/* Active Browse Filter Badge */}
+            {activeBrowseFilter && (
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: '10px 14px',
+                  backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                  border: '1px solid rgba(59, 130, 246, 0.25)',
+                  borderRadius: 'var(--radius-md)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-primary)' }}>
+                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                  </svg>
+                  <span style={{ color: 'var(--color-text-muted)' }}>Menyaring koleksi berdasarkan:</span>
+                  <span
+                    style={{
+                      fontWeight: 700,
+                      color: 'var(--color-primary)',
+                      backgroundColor: 'var(--color-surface)',
+                      padding: '3px 10px',
+                      borderRadius: 6,
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                    }}
+                  >
+                    {activeBrowseFilter.label}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveBrowseFilter(null)}
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: '#ef4444',
+                    background: 'rgba(239, 68, 68, 0.08)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                  <span>Hapus Filter</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Results Summary Bar */}
@@ -454,14 +787,22 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
             </div>
           ) : (
             <div>
-              {articles.map((item) => (
-                <ArticleCard
-                  key={item.eprintid}
-                  article={item}
-                  onSelect={(art) => setSelectedArticle(art)}
-                  onOpenPdf={handleOpenPdf}
-                />
-              ))}
+              {/* Top Pagination Bar */}
+              {renderPagination('top')}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {articles.map((item) => (
+                  <ArticleCard
+                    key={item.eprintid}
+                    article={item}
+                    onSelect={(art) => setSelectedArticle(art)}
+                    onOpenPdf={handleOpenPdf}
+                  />
+                ))}
+              </div>
+
+              {/* Bottom Pagination Bar */}
+              {renderPagination('bottom')}
             </div>
           )}
         </div>
@@ -489,6 +830,16 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
           onClose={() => setActivePdf(null)}
         />
       )}
+
+      {/* Browse Items Modal */}
+      <BrowseItemsModal
+        isOpen={isBrowseModalOpen}
+        activeCategory={browseCategoryTab}
+        onClose={() => setIsBrowseModalOpen(false)}
+        onSelectFilter={(cat, val, lbl) => {
+          setActiveBrowseFilter({ category: cat, value: val, label: lbl });
+        }}
+      />
     </div>
   );
 };

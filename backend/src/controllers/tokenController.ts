@@ -251,27 +251,15 @@ export class TokenController {
     const clientUuid = (getHeader(req.headers['x-client-uuid']) || req.cookies?.client_uuid || (req.query?.client_uuid as string)) as string;
     const fingerprint = TokenService.createFingerprint(clientIp, userAgent, clientUuid);
 
-    const fallbacks: string[] = [
-      TokenService.createFingerprint(clientIp, userAgent),
-      TokenService.createFingerprint(rawIp, userAgent),
-      TokenService.createLegacyFingerprint(clientIp, userAgent, clientUuid),
-      TokenService.createLegacyFingerprint(clientIp, userAgent, undefined),
-      TokenService.createLegacyFingerprint(clientIp, userAgent, 'none'),
-      TokenService.createLegacyFingerprint(rawIp, userAgent, clientUuid),
-      TokenService.createLegacyFingerprint(rawIp, userAgent, undefined),
-      TokenService.createLegacyFingerprint(rawIp, userAgent, 'none'),
-      TokenService.createLegacyFingerprint('127.0.0.1', userAgent),
-      TokenService.createLegacyFingerprint('::1', userAgent),
-      TokenService.createLegacyFingerprint('172.29.0.1', userAgent),
-      TokenService.createFingerprint('172.29.0.1', userAgent),
-      TokenService.createFingerprint('127.0.0.1', userAgent),
-      TokenService.createFingerprint('::1', userAgent),
-    ];
-    if (clientUuid) {
-      fallbacks.push(TokenService.createLegacyFingerprint('127.0.0.1', userAgent, clientUuid));
-      fallbacks.push(TokenService.createLegacyFingerprint('::1', userAgent, clientUuid));
-      fallbacks.push(TokenService.createLegacyFingerprint('172.29.0.1', userAgent, clientUuid));
+    const fallbacks: string[] = [];
+    if (rawIp && rawIp !== clientIp) {
+      fallbacks.push(TokenService.createFingerprint(rawIp, userAgent, clientUuid));
     }
+    fallbacks.push(TokenService.createFingerprint('127.0.0.1', userAgent, clientUuid));
+    fallbacks.push(TokenService.createFingerprint('::1', userAgent, clientUuid));
+    fallbacks.push(TokenService.createFingerprint('172.29.0.1', userAgent, clientUuid));
+    fallbacks.push(TokenService.createLegacyFingerprint(clientIp, userAgent, clientUuid));
+    fallbacks.push(TokenService.createLegacyFingerprint(rawIp, userAgent, clientUuid));
 
     const status = await TokenService.getSessionStatus(tokenId, fingerprint, fallbacks);
 

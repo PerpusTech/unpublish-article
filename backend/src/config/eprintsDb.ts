@@ -20,6 +20,9 @@ export interface EPrintItem {
   eprint_status: 'archive' | 'buffer' | 'inbox' | 'deletion';
   creators: string[];
   department?: string;
+  id_number?: string;
+  nim?: string;
+  nidn?: string;
   documents: DocumentItem[];
 }
 
@@ -33,6 +36,8 @@ export const MOCK_EPRINTS: EPrintItem[] = [
     date_year: 2025,
     type: 'thesis',
     eprint_status: 'buffer',
+    id_number: 'L200210045',
+    nim: 'L200210045',
     creators: ['Muhammad Rizqi Pratama', 'Dr. Fajar Suryawan, S.T., M.Eng.'],
     department: 'Program Studi Informatika, Fakultas Komunikasi dan Informatika',
     documents: [
@@ -52,6 +57,8 @@ export const MOCK_EPRINTS: EPrintItem[] = [
     date_year: 2025,
     type: 'thesis',
     eprint_status: 'buffer',
+    id_number: 'K100210088',
+    nim: 'K100210088',
     creators: ['Siti Nur Aisyah', 'Prof. Dr. apt. Muhammad Da\'i, M.Si.'],
     department: 'Fakultas Farmasi',
     documents: [
@@ -71,6 +78,8 @@ export const MOCK_EPRINTS: EPrintItem[] = [
     date_year: 2024,
     type: 'thesis',
     eprint_status: 'inbox',
+    id_number: 'J500200112',
+    nim: 'J500200112',
     creators: ['Ahmad Fauzan Hakim', 'dr. EM Sutrisna, M.Kes.'],
     department: 'Fakultas Kedokteran',
     documents: [
@@ -90,6 +99,8 @@ export const MOCK_EPRINTS: EPrintItem[] = [
     date_year: 2024,
     type: 'article',
     eprint_status: 'archive',
+    id_number: 'D400200055',
+    nim: 'D400200055',
     creators: ['Bagus Hendrawan', 'Ir. Agus Supardi, M.T.'],
     department: 'Program Studi Teknik Elektro, Fakultas Teknik',
     documents: [
@@ -109,6 +120,8 @@ export const MOCK_EPRINTS: EPrintItem[] = [
     date_year: 2023,
     type: 'article',
     eprint_status: 'archive',
+    id_number: 'B100190330',
+    nim: 'B100190330',
     creators: ['Dian Wardhani', 'Dr. Anton Agus Setyawan, S.E., M.Si.'],
     department: 'Fakultas Ekonomi dan Bisnis',
     documents: [
@@ -128,6 +141,8 @@ export const MOCK_EPRINTS: EPrintItem[] = [
     date_year: 2025,
     type: 'thesis',
     eprint_status: 'buffer',
+    id_number: 'D500210019',
+    nim: 'D500210019',
     creators: ['Fajar Hidayat', 'Prof. Dr. Ir. H. Bambang Sumardiono, M.Sc.'],
     department: 'Teknik Kimia, Fakultas Teknik',
     documents: [

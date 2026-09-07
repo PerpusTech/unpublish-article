@@ -9,7 +9,7 @@ import { ArticleController } from './controllers/articleController';
 import { AuditController } from './controllers/auditController';
 import { UserController } from './controllers/userController';
 import { requireAdminAuth } from './middlewares/adminAuth';
-import { requirePatronSession } from './middlewares/patronAuth';
+import { requirePatronSession, optionalPatronSession } from './middlewares/patronAuth';
 import { TokenService } from './services/tokenService';
 
 const app = express();
@@ -62,10 +62,11 @@ api.post('/patron/session/claim', TokenController.claimToken);
 api.get('/patron/session/status', TokenController.getSessionStatus);
 api.post('/patron/session/logout', TokenController.logout);
 
-// ================= PROTECTED ARTICLE ROUTES =================
+// ================= PROTECTED ARTICLE & BROWSE ROUTES =================
 api.get('/articles', requirePatronSession, ArticleController.listArticles);
 api.get('/articles/:id', requirePatronSession, ArticleController.getArticle);
 api.get('/articles/:id/documents/:docId/view', requirePatronSession, ArticleController.streamDocument);
+api.get('/browse/:category', optionalPatronSession, ArticleController.browseCategory);
 
 app.use('/api/v1', api);
 

@@ -34,10 +34,10 @@ export class TokenService {
   }
 
   /**
-   * Generates device fingerprint hash from request headers (IP + User-Agent)
+   * Generates device fingerprint hash from request headers and unique browser storage (IP + User-Agent + ClientUUID)
    */
-  public static createFingerprint(ip: string, userAgent: string, _clientUuid?: string): string {
-    const raw = `${ip}|${userAgent}`;
+  public static createFingerprint(ip: string, userAgent: string, clientUuid?: string): string {
+    const raw = `${ip}|${userAgent}|${clientUuid || 'anonymous'}`;
     return crypto.createHash('sha256').update(raw).digest('hex');
   }
 

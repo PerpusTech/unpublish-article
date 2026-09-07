@@ -21,11 +21,27 @@ export class ArticleController {
     const q = req.query.q as string;
     const status = (req.query.status as any) || 'ALL';
     const year = req.query.year ? parseInt(req.query.year as string, 10) : undefined;
+    const division = req.query.division as string;
+    const type = req.query.type as string;
+    const subject = req.query.subject as string;
+    const author = req.query.author as string;
+    const id_number = req.query.id_number as string;
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
 
     try {
-      const result = await EPrintsService.searchArticles({ q, status, year, page, limit });
+      const result = await EPrintsService.searchArticles({
+        q,
+        status,
+        year,
+        division,
+        type,
+        subject,
+        author,
+        id_number,
+        page,
+        limit
+      });
 
       // If there's an active patron and search query, log the search
       if (req.patron && q && q.trim().length > 0) {
@@ -47,6 +63,38 @@ export class ArticleController {
         error: {
           code: 'INTERNAL_ERROR',
           message: err.message || 'Gagal memuat daftar artikel.'
+        }
+      });
+    }
+  }
+
+  /**
+   * Browse repository items by category (year, subject, division, type, author)
+   */
+  public static async browseCategory(req: Request, res: Response): Promise<void> {
+    const category = req.params.category as 'year' | 'subject' | 'division' | 'type' | 'author';
+    const q = req.query.q as string;
+
+    const validCategories = ['year', 'subject', 'division', 'type', 'author'];
+    if (!validCategories.includes(category)) {
+      res.status(400).json({
+        error: {
+          code: 'INVALID_CATEGORY',
+          message: `Kategori penjelajahan tidak valid. Pilihan: ${validCategories.join(', ')}`
+        }
+      });
+      return;
+    }
+
+    try {
+      const result = await EPrintsService.browseCategory(category, q);
+      res.json(result);
+    } catch (err: any) {
+      console.error('[ArticleController] Browse error:', err);
+      res.status(500).json({
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: err.message || 'Gagal memuat kategori penjelajahan.'
         }
       });
     }

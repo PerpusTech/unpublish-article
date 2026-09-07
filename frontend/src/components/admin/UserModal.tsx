@@ -169,11 +169,11 @@ export const UserModal: React.FC<UserModalProps> = ({
             >
               {role === 'ADMIN' ? (
                 <span>
-                  🛡️ <strong>Akses Penuh:</strong> Pengguna dapat menerbitkan token baca, melihat log audit, serta memberikan hak admin ke orang lain.
+                  <strong>Akses Penuh:</strong> Pengguna dapat menerbitkan token baca, melihat log audit, serta memberikan hak admin ke orang lain.
                 </span>
               ) : (
                 <span>
-                  👤 <strong>Akses Terbatas:</strong> Pengguna hanya berstatus pemustaka biasa dan tidak dapat login ke panel ini.
+                  <strong>Akses Terbatas:</strong> Pengguna hanya berstatus pemustaka biasa dan tidak dapat login ke panel ini.
                 </span>
               )}
             </div>

@@ -28,6 +28,9 @@ export interface ArticleItem {
   eprint_status: 'archive' | 'buffer' | 'inbox' | 'deletion';
   creators: string[];
   department?: string;
+  id_number?: string;
+  nim?: string;
+  nidn?: string;
   documents?: {
     docid: number;
     filename: string;
@@ -73,6 +76,17 @@ export interface UserItem {
   last_login_at?: string;
   created_at?: string;
   sso_attributes?: string;
+}
+
+export interface BrowseItem {
+  value: string;
+  label: string;
+  count: number;
+}
+
+export interface BrowseResult {
+  category: 'year' | 'subject' | 'division' | 'type' | 'author';
+  items: BrowseItem[];
 }
 
 export function getAdminHeaders(extra: Record<string, string> = {}): Record<string, string> {
@@ -159,6 +173,11 @@ export const api = {
     q?: string;
     status?: 'ALL' | 'UNPUBLISH' | 'PUBLISH';
     year?: number;
+    subject?: string;
+    division?: string;
+    type?: string;
+    author?: string;
+    id_number?: string;
     page?: number;
     limit?: number;
   }): Promise<{ items: ArticleItem[]; total: number; totalPages: number }> {
@@ -166,6 +185,11 @@ export const api = {
     if (params.q) qs.append('q', params.q);
     if (params.status) qs.append('status', params.status);
     if (params.year) qs.append('year', params.year.toString());
+    if (params.subject) qs.append('subject', params.subject);
+    if (params.division) qs.append('division', params.division);
+    if (params.type) qs.append('type', params.type);
+    if (params.author) qs.append('author', params.author);
+    if (params.id_number) qs.append('id_number', params.id_number);
     if (params.page) qs.append('page', params.page.toString());
     if (params.limit) qs.append('limit', params.limit.toString());
 
@@ -183,6 +207,31 @@ export const api = {
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error?.message || 'Gagal memuat katalog artikel');
+    }
+    return await res.json();
+  },
+
+  async browseCategory(
+    category: 'year' | 'subject' | 'division' | 'type' | 'author',
+    q?: string
+  ): Promise<BrowseResult> {
+    const qs = new URLSearchParams();
+    if (q) qs.append('q', q);
+
+    const storedTokenId = localStorage.getItem('ums_patron_token_id') || '';
+    if (storedTokenId) qs.append('token_id', storedTokenId);
+
+    const res = await fetch(`${API_BASE}/browse/${category}?${qs.toString()}`, {
+      credentials: 'include',
+      headers: {
+        'x-client-uuid': getClientUuid(),
+        ...(storedTokenId ? { 'x-patron-token-id': storedTokenId } : {})
+      },
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || 'Gagal memuat data penjelajahan');
     }
     return await res.json();
   },

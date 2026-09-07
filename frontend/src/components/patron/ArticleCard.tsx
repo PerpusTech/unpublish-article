@@ -93,6 +93,11 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect, onO
                 <circle cx="12" cy="7" r="4" />
               </svg>
               <span>{author}</span>
+              {idx === 0 && (article.id_number || article.nim) && (
+                <span className="author-id-number" title="Nomor Identifikasi / NIM Penulis">
+                  {article.id_number || article.nim}
+                </span>
+              )}
             </span>
           ))
         ) : (
@@ -102,6 +107,11 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect, onO
               <circle cx="12" cy="7" r="4" />
             </svg>
             <span>Peneliti Civitas UMS</span>
+            {(article.id_number || article.nim) && (
+              <span className="author-id-number" title="Nomor Identifikasi / NIM">
+                {article.id_number || article.nim}
+              </span>
+            )}
           </span>
         )}
 

@@ -267,7 +267,12 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
             {filteredTokens.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--color-text-muted)' }}>
-                  <div style={{ fontSize: 24, marginBottom: 8 }}>📋</div>
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12, color: 'var(--color-text-light)' }}>
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                      <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                    </svg>
+                  </div>
                   <div style={{ fontWeight: 600 }}>Tidak ada tiket pemustaka yang sesuai kriteria.</div>
                   <div style={{ fontSize: 12, color: 'var(--color-text-light)', marginTop: 4 }}>
                     Gunakan tombol di kanan atas untuk menerbitkan tiket membaca baru.
