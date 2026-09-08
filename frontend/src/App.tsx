@@ -4,6 +4,8 @@ import { Header } from './components/Header';
 import { PatronView } from './pages/PatronView';
 import { AdminView } from './pages/AdminView';
 import { TokenEntryModal } from './components/patron/TokenEntryModal';
+import { SessionExpiryBanner } from './components/patron/SessionExpiryBanner';
+import { SessionExpiredModal } from './components/patron/SessionExpiredModal';
 import { ThemeToggle } from './components/ThemeToggle';
 
 export const App: React.FC = () => {
@@ -15,6 +17,8 @@ export const App: React.FC = () => {
       return null;
     }
   });
+  const [expiredSession, setExpiredSession] = useState<PatronSession | null>(null);
+  const [isExpiredModalOpen, setIsExpiredModalOpen] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'PATRON' | 'ADMIN'>(() => {
     const params = new URLSearchParams(window.location.search);
     const path = window.location.pathname.toLowerCase();
@@ -89,6 +93,10 @@ export const App: React.FC = () => {
         localStorage.setItem('ums_patron_session', JSON.stringify(activeSession));
         localStorage.setItem('ums_patron_token_id', activeSession.id);
       } else if (res.isActive === false && res.reason) {
+        if (session) {
+          setExpiredSession(session);
+          setIsExpiredModalOpen(true);
+        }
         setSession(null);
         localStorage.removeItem('ums_patron_session');
         localStorage.removeItem('ums_patron_token_id');
@@ -96,6 +104,16 @@ export const App: React.FC = () => {
     } catch {
       // Keep existing cached session if offline/transient hiccup
     }
+  };
+
+  const handleSessionExpired = () => {
+    if (session) {
+      setExpiredSession(session);
+      setIsExpiredModalOpen(true);
+    }
+    setSession(null);
+    localStorage.removeItem('ums_patron_session');
+    localStorage.removeItem('ums_patron_token_id');
   };
 
   useEffect(() => {
@@ -118,6 +136,16 @@ export const App: React.FC = () => {
 
   return (
     <div className="app-container">
+      {/* Session Expiry Warning Banner (Visible in Patron mode when <= 5 mins left) */}
+      {viewMode === 'PATRON' && (
+        <SessionExpiryBanner
+          session={session}
+          onOpenClaimModal={() => setIsClaimModalOpen(true)}
+          onLogout={handleLogoutPatron}
+          onSessionExpired={handleSessionExpired}
+        />
+      )}
+
       <Header
         session={session}
         isAdmin={viewMode === 'ADMIN'}
@@ -174,6 +202,7 @@ export const App: React.FC = () => {
         </div>
       </footer>
 
+      {/* Claim / Token Entry Modal */}
       <TokenEntryModal
         isOpen={isClaimModalOpen}
         initialTokenCode={initialClaimToken}
@@ -187,6 +216,20 @@ export const App: React.FC = () => {
           localStorage.setItem('ums_patron_token_id', newSession.id);
           setViewMode('PATRON');
           setInitialClaimToken('');
+        }}
+      />
+
+      {/* Session Expired Informative Dialog */}
+      <SessionExpiredModal
+        isOpen={isExpiredModalOpen}
+        session={expiredSession}
+        onOpenClaimModal={() => {
+          setIsExpiredModalOpen(false);
+          setIsClaimModalOpen(true);
+        }}
+        onClose={() => {
+          setIsExpiredModalOpen(false);
+          setExpiredSession(null);
         }}
       />
     </div>

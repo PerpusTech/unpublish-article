@@ -59,10 +59,30 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="site-header">
       <div className="header-inner">
-        <div className="brand-section">
-          <div className="brand-logo-badge">UMS</div>
+        <div
+          className="brand-section"
+          style={{ cursor: onOpenPatron ? 'pointer' : 'default' }}
+          onClick={onOpenPatron}
+          role={onOpenPatron ? 'button' : undefined}
+          tabIndex={onOpenPatron ? 0 : undefined}
+          onKeyDown={(e) => {
+            if (onOpenPatron && (e.key === 'Enter' || e.key === ' ')) {
+              onOpenPatron();
+            }
+          }}
+        >
+          <img
+            src="/img/logo4a.png"
+            alt="UPT Perpustakaan dan Layanan Digital UMS"
+            className="brand-logo-img brand-logo-light"
+          />
+          <img
+            src="/img/logo4.png"
+            alt="UPT Perpustakaan dan Layanan Digital UMS"
+            className="brand-logo-img brand-logo-dark"
+          />
           <div>
-            <h1 className="brand-title">Perpustakaan Universitas Muhammadiyah Surakarta</h1>
+            <h1 className="brand-title">UPT Perpustakaan dan Layanan Digital UMS</h1>
             <p className="brand-subtitle">Portal Repositori E-Prints — Layanan Karya Ilmiah & Akses Khusus</p>
           </div>
         </div>

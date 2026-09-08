@@ -7,21 +7,40 @@ interface ArticleCardProps {
   onOpenPdf?: (articleId: number, docId: number, title: string) => void;
 }
 
-export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect, onOpenPdf }) => {
+export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect }) => {
   const isPublish = article.eprint_status === 'archive';
   const tierClass = isPublish ? 'publish-tier' : 'unpublish-tier';
+
+  // Format creators cleanly
+  const authors = Array.isArray(article.creators)
+    ? article.creators
+        .map((c) =>
+          typeof c === 'string'
+            ? c
+            : (c as any)?.name
+            ? `${(c as any).name.family || ''} ${(c as any).name.given || ''}`.trim()
+            : String(c)
+        )
+        .filter(Boolean)
+    : typeof article.creators === 'string'
+    ? (article.creators as string).split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  const mainAuthor = authors.length > 0 ? authors[0] : 'Peneliti Civitas UMS';
+  const otherAuthorsCount = authors.length > 1 ? authors.length - 1 : 0;
+  const authorNim = article.id_number || article.nim;
 
   return (
     <article
       className={`academic-card ${tierClass}`}
       aria-labelledby={`article-heading-${article.eprintid}`}
     >
-      {/* Top Meta Line: EPrint ID, Year, Publication Type, Status */}
+      {/* Top Meta Line */}
       <div className="academic-card-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div className="academic-meta-left">
           <span className="eprint-id-badge">#{article.eprintid}</span>
-
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--color-text-muted)' }}>
+          <span className="meta-dot">·</span>
+          <span className="meta-item">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
               <line x1="16" y1="2" x2="16" y2="6" />
@@ -30,39 +49,23 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect, onO
             </svg>
             <span>{article.date_year || 'Tahun N/A'}</span>
           </span>
-
           {article.type && (
-            <span
-              style={{
-                fontSize: 11.5,
-                textTransform: 'capitalize',
-                background: 'var(--color-surface-subtle)',
-                padding: '2px 8px',
-                borderRadius: 4,
-                color: 'var(--color-text-muted)',
-                border: '1px solid var(--color-border)',
-              }}
-            >
-              {article.type}
-            </span>
+            <>
+              <span className="meta-dot">·</span>
+              <span className="meta-type-tag">{article.type}</span>
+            </>
           )}
         </div>
 
-        <div>
+        <div className="academic-meta-right">
           {isPublish ? (
-            <span
-              className="badge badge-publish"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-            >
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />
+            <span className="status-badge status-badge-publish">
+              <span className="status-indicator-dot" />
               Terbit Terbuka (Archive)
             </span>
           ) : (
-            <span
-              className="badge badge-unpublish"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-            >
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />
+            <span className="status-badge status-badge-unpublish">
+              <span className="status-indicator-dot" />
               Khusus Perpustakaan (Unpublish)
             </span>
           )}
@@ -82,74 +85,32 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect, onO
         </a>
       </h3>
 
+      {/* Authors & Faculty/Department Line */}
+      <div className="academic-card-authors">
+        <div className="author-info">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--color-text-muted)' }}>
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+          <span className="author-name">{mainAuthor}</span>
+          {authorNim && <span className="author-nim">({authorNim})</span>}
+          {otherAuthorsCount > 0 && (
+            <span className="other-authors-tag">+{otherAuthorsCount} penulis</span>
+          )}
+        </div>
 
-      {/* Authors & Department */}
-      <div className="author-chip-list">
-        {(() => {
-          const authors = Array.isArray(article.creators)
-            ? article.creators.map((c) => (typeof c === 'string' ? c : (c as any)?.name ? `${(c as any).name.family || ''} ${(c as any).name.given || ''}`.trim() : String(c))).filter(Boolean)
-            : typeof article.creators === 'string'
-            ? (article.creators as string).split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean)
-            : [];
-
-          if (authors.length > 0) {
-            return (
-              <>
-                {authors.slice(0, 3).map((author, idx) => (
-                  <span key={idx} className="author-chip">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                      <circle cx="12" cy="7" r="4" />
-                    </svg>
-                    <span>{author}</span>
-                    {idx === 0 && (article.id_number || article.nim) && (
-                      <span className="author-id-number" title="Nomor Identifikasi / NIM Penulis">
-                        {article.id_number || article.nim}
-                      </span>
-                    )}
-                  </span>
-                ))}
-                {authors.length > 3 && (
-                  <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)', fontWeight: 600 }}>
-                    +{authors.length - 3} lainnya
-                  </span>
-                )}
-              </>
-            );
-          }
-
-          return (
-            <span className="author-chip">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                <circle cx="12" cy="7" r="4" />
-              </svg>
-              <span>Peneliti Civitas UMS</span>
-              {(article.id_number || article.nim) && (
-                <span className="author-id-number" title="Nomor Identifikasi / NIM">
-                  {article.id_number || article.nim}
-                </span>
-              )}
-            </span>
-          );
-        })()}
         {article.department && (
-          <span className="department-tag">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <div className="department-info">
+            <span className="meta-dot">·</span>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--color-text-muted)' }}>
               <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
               <path d="M9 22v-4h6v4" />
               <path d="M8 6h.01" />
               <path d="M16 6h.01" />
               <path d="M12 6h.01" />
-              <path d="M12 10h.01" />
-              <path d="M12 14h.01" />
-              <path d="M16 10h.01" />
-              <path d="M16 14h.01" />
-              <path d="M8 10h.01" />
-              <path d="M8 14h.01" />
             </svg>
-            <span>{article.department}</span>
-          </span>
+            <span className="department-name">{article.department}</span>
+          </div>
         )}
       </div>
 
@@ -159,7 +120,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect, onO
       </p>
 
       {/* Card Action Footer */}
-      <div className="academic-card-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+      <div className="academic-card-footer">
         <div className="doc-count-pill">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -169,7 +130,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect, onO
           </svg>
           <span>
             {article.documents && article.documents.length > 0
-              ? `${article.documents.length} Dokumen (PDF)`
+              ? `${article.documents.length} Dokumen Terlampir (PDF)`
               : 'Naskah Digital Terkoneksi'}
           </span>
         </div>
@@ -177,18 +138,11 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect, onO
         <div>
           <button
             type="button"
-            className="btn btn-secondary btn-sm"
+            className="btn btn-secondary btn-sm academic-detail-btn"
             onClick={() => onSelect(article)}
-            style={{
-              fontWeight: 600,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 14px',
-            }}
           >
             <span>Detail & Abstrak Naskah</span>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="5" y1="12" x2="19" y2="12" />
               <polyline points="12 5 19 12 12 19" />
             </svg>
@@ -198,3 +152,4 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect, onO
     </article>
   );
 };
+

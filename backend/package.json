@@ -1,7 +1,7 @@
 {
   "name": "unpublish-article-backend",
   "version": "1.0.0",
-  "description": "Backend service for EPrints Unpublish Viewer Perpustakaan UMS",
+  "description": "Backend service for EPrints Unpublish Viewer UPT Perpustakaan dan Layanan Digital UMS",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

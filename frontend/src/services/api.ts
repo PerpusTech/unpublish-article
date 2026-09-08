@@ -573,7 +573,126 @@ export const api = {
       return { success: false, items: [] };
     }
   },
+
+  async getDatabaseStats(): Promise<{ success: boolean; stats?: DatabaseStats; error?: { message: string } }> {
+    try {
+      const res = await fetch(`${API_BASE}/admin/backup/stats`, {
+        credentials: 'include',
+        headers: getAdminHeaders(),
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: { message: err.message || 'Gagal memuat statistik database.' } };
+    }
+  },
+
+  async downloadDatabaseBackup(): Promise<void> {
+    const res = await fetch(`${API_BASE}/admin/backup/download`, {
+      credentials: 'include',
+      headers: getAdminHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error('Gagal mengunduh file backup database');
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+    a.download = `unpublish_db_backup_${dateStr}.sqlite`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  },
+
+  async exportDatabaseJson(): Promise<void> {
+    const res = await fetch(`${API_BASE}/admin/backup/export-json`, {
+      credentials: 'include',
+      headers: getAdminHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error('Gagal mengekspor data database ke JSON');
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+    a.download = `unpublish_db_export_${dateStr}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  },
+
+  async optimizeDatabase(): Promise<{ success: boolean; message?: string; currentSizeFormatted?: string; error?: { message: string } }> {
+    try {
+      const res = await fetch(`${API_BASE}/admin/backup/optimize`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: { message: err.message || 'Gagal mengoptimasi database.' } };
+    }
+  },
+
+  // === EPrints Repository DB Status (Live MySQL vs Mock) ===
+  async getEPrintsDbStatus(): Promise<EPrintsDbStatus> {
+    const res = await fetch(`${API_BASE}/admin/eprints-status`, {
+      credentials: 'include',
+      headers: getAdminHeaders(),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'Gagal mengecek status koneksi database EPrints');
+    return json;
+  },
 };
+
+export const adminApi = api;
+
+export interface EPrintsDbStatus {
+  mode: 'LIVE_MYSQL' | 'MOCK';
+  connected: boolean;
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  latencyMs: number;
+  totalArticles: number;
+  unpublishArticles: number;
+  publishArticles: number;
+  documentsPath: string;
+  documentsPathExists: boolean;
+  lastChecked: string;
+  statusMessage: string;
+  error?: string;
+}
+
+export interface DatabaseStats {
+  databaseFile: string;
+  databasePath: string;
+  sizeBytes: number;
+  sizeFormatted: string;
+  lastModified: string;
+  created: string;
+  integrity: string;
+  journalMode: string;
+  pageSize: number;
+  pageCount: number;
+  tables: {
+    tokens: number;
+    audit_logs: number;
+    admin_users: number;
+  };
+  totalRecords: number;
+}
 
 export interface AnalyticsData {
   kpis: {

@@ -190,4 +190,21 @@ export class ArticleController {
       });
     }
   }
+
+  /**
+   * Get real-time EPrints DB status & connectivity diagnostics (Live vs Mock)
+   */
+  public static async getDbStatus(req: Request, res: Response): Promise<void> {
+    try {
+      const status = await EPrintsService.getConnectionStatus();
+      res.json(status);
+    } catch (err: any) {
+      res.status(500).json({
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: err.message || 'Gagal mengecek status koneksi database EPrints.'
+        }
+      });
+    }
+  }
 }

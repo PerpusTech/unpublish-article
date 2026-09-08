@@ -17,7 +17,7 @@ export function createSimplePdf(filePath: string, title: string, author: string,
 
   const streamContent = [
     'BT',
-    '/F1 20 Tf 50 730 Td (PERPUSTAKAAN UNIVERSITAS MUHAMMADIYAH SURAKARTA) Tj',
+    '/F1 20 Tf 50 730 Td (UPT PERPUSTAKAAN DAN LAYANAN DIGITAL UNIVERSITAS MUHAMMADIYAH SURAKARTA) Tj',
     '/F1 12 Tf 0 -25 Td (Jl. A. Yani, Pabelan, Kartasura, Sukoharjo, Jawa Tengah 57162) Tj',
     '0 -10 Td (_____________________________________________________________________) Tj',
     '/F1 14 Tf 0 -45 Td (DOKUMEN REPOSITORI INTERNAL E-PRINTS) Tj',
@@ -29,8 +29,8 @@ export function createSimplePdf(filePath: string, title: string, author: string,
     '/F1 12 Tf 0 -35 Td (Tahun / Identifikasi: ' + nimOrYear + ') Tj',
     '/F1 10 Tf 0 -45 Td (Status Dokumen:) Tj',
     '/F1 11 Tf 0 -18 Td (' + safeNote + ') Tj',
-    '/F1 9 Tf 0 -60 Td (PEMBERITAHUAN KEAMANAN PERPUSTAKAAN UMS:) Tj',
-    '/F1 9 Tf 0 -15 Td (Dokumen ini disajikan khusus untuk pembacaan terbatas di lingkungan Perpustakaan UMS.) Tj',
+    '/F1 9 Tf 0 -60 Td (PEMBERITAHUAN KEAMANAN UPT Perpustakaan dan Layanan Digital UMS:) Tj',
+    '/F1 9 Tf 0 -15 Td (Dokumen ini disajikan khusus untuk pembacaan terbatas di lingkungan UPT Perpustakaan dan Layanan Digital UMS.) Tj',
     '/F1 9 Tf 0 -15 Td (Dilarang memperbanyak, mendistribusikan, atau menyalin tanpa izin tertulis dari penulis.) Tj',
     'ET'
   ].filter(Boolean).join('\n');
@@ -85,7 +85,7 @@ export function createSimplePdfBuffer(title: string, author: string, nimOrYear: 
 
   const streamContent = [
     'BT',
-    '/F1 20 Tf 50 730 Td (PERPUSTAKAAN UNIVERSITAS MUHAMMADIYAH SURAKARTA) Tj',
+    '/F1 20 Tf 50 730 Td (UPT PERPUSTAKAAN DAN LAYANAN DIGITAL UNIVERSITAS MUHAMMADIYAH SURAKARTA) Tj',
     '/F1 12 Tf 0 -25 Td (Jl. A. Yani, Pabelan, Kartasura, Sukoharjo, Jawa Tengah 57162) Tj',
     '0 -10 Td (_____________________________________________________________________) Tj',
     '/F1 14 Tf 0 -45 Td (DOKUMEN REPOSITORI INTERNAL E-PRINTS) Tj',
@@ -97,8 +97,8 @@ export function createSimplePdfBuffer(title: string, author: string, nimOrYear: 
     '/F1 12 Tf 0 -35 Td (Tahun / Identifikasi: ' + nimOrYear + ') Tj',
     '/F1 10 Tf 0 -45 Td (Status Dokumen:) Tj',
     '/F1 11 Tf 0 -18 Td (' + safeNote + ') Tj',
-    '/F1 9 Tf 0 -60 Td (PEMBERITAHUAN KEAMANAN PERPUSTAKAAN UMS:) Tj',
-    '/F1 9 Tf 0 -15 Td (Dokumen ini disajikan khusus untuk pembacaan terbatas di lingkungan Perpustakaan UMS.) Tj',
+    '/F1 9 Tf 0 -60 Td (PEMBERITAHUAN KEAMANAN UPT Perpustakaan dan Layanan Digital UMS:) Tj',
+    '/F1 9 Tf 0 -15 Td (Dokumen ini disajikan khusus untuk pembacaan terbatas di lingkungan UPT Perpustakaan dan Layanan Digital UMS.) Tj',
     '/F1 9 Tf 0 -15 Td (Dilarang memperbanyak, mendistribusikan, atau menyalin tanpa izin tertulis dari penulis.) Tj',
     'ET'
   ].filter(Boolean).join('\n');

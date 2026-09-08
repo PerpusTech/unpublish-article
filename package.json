@@ -2,7 +2,7 @@
   "name": "unpublish-article-monorepo",
   "version": "1.0.0",
   "private": true,
-  "description": "EPrints Unpublish Article Viewer for Perpustakaan UMS",
+  "description": "EPrints Unpublish Article Viewer for UPT Perpustakaan dan Layanan Digital UMS",
   "scripts": {
     "docker:up": "docker compose up --build -d",
     "docker:down": "docker compose down",

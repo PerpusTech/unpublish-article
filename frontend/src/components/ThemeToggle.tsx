@@ -8,12 +8,19 @@ export const ThemeToggle: React.FC = () => {
   });
 
   useEffect(() => {
+    const favicon = document.querySelector("link[rel*='icon']") as HTMLLinkElement | null;
+    const appleIcon = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement | null;
+
     if (isDark) {
       document.documentElement.setAttribute('data-theme', 'dark');
       localStorage.setItem('theme', 'dark');
+      if (favicon) favicon.href = '/img/logo4.png';
+      if (appleIcon) appleIcon.href = '/img/logo4.png';
     } else {
       document.documentElement.removeAttribute('data-theme');
       localStorage.setItem('theme', 'light');
+      if (favicon) favicon.href = '/img/logo4a.png';
+      if (appleIcon) appleIcon.href = '/img/logo4a.png';
     }
   }, [isDark]);
 

@@ -277,15 +277,15 @@ export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({
 
                   if (authors.length > 0) {
                     return authors.map((author, idx) => (
-                      <span key={idx} className="author-chip" style={{ fontSize: 12.5, padding: '4px 12px' }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <span key={idx} className="author-chip">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--color-text-muted)' }}>
                           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                           <circle cx="12" cy="7" r="4" />
                         </svg>
-                        <span>{author}</span>
+                        <span className="author-chip-name">{author}</span>
                         {idx === 0 && (currentArticle.id_number || currentArticle.nim) && (
-                          <span className="author-id-number" title="Nomor Identifikasi / NIM Penulis">
-                            {currentArticle.id_number || currentArticle.nim}
+                          <span className="author-chip-nim" title="Nomor Identifikasi / NIM Penulis">
+                            ({currentArticle.id_number || currentArticle.nim})
                           </span>
                         )}
                       </span>
@@ -293,15 +293,15 @@ export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({
                   }
 
                   return (
-                    <span className="author-chip" style={{ fontSize: 12.5, padding: '4px 12px' }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <span className="author-chip">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--color-text-muted)' }}>
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                         <circle cx="12" cy="7" r="4" />
                       </svg>
-                      <span>Civitas Akademika UMS</span>
+                      <span className="author-chip-name">Civitas Akademika UMS</span>
                       {(currentArticle.id_number || currentArticle.nim) && (
-                        <span className="author-id-number" title="Nomor Identifikasi / NIM">
-                          {currentArticle.id_number || currentArticle.nim}
+                        <span className="author-chip-nim" title="Nomor Identifikasi / NIM">
+                          ({currentArticle.id_number || currentArticle.nim})
                         </span>
                       )}
                     </span>

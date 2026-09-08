@@ -1,4 +1,4 @@
-# Tasks & Roadmap — EPrints Unpublish Viewer Perpustakaan UMS
+# Tasks & Roadmap — EPrints Unpublish Viewer UPT Perpustakaan dan Layanan Digital UMS
 
 Dokumen daftar tugas implementasi teknis berdasarkan [PRD](file:///d:/Code/unpublish-article/prd.md), [Architecture](file:///d:/Code/unpublish-article/architecture.md), dan [Design Doc](file:///d:/Code/unpublish-article/design.md).
 
@@ -71,7 +71,7 @@ Dokumen daftar tugas implementasi teknis berdasarkan [PRD](file:///d:/Code/unpub
   - Card artikel dengan badge status kontras dan detail abstrak.
 - [x] **T-13: PDF Canvas Viewer dengan Dynamic Watermark**
   - Viewer naskah streaming terlindungi.
-  - Layer watermark diagonal semi-transparan `Perpustakaan UMS • [NIM] - [Nama] • Token: [Code] • [Tanggal]`.
+  - Layer watermark diagonal semi-transparan `UPT Perpustakaan dan Layanan Digital UMS • [NIM] - [Nama] • Token: [Code] • [Tanggal]`.
   - Pencegahan klik kanan (*context menu*), shortcut keyboard print (`Ctrl+P`), save (`Ctrl+S`).
 
 ---

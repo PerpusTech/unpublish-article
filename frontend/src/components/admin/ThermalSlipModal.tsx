@@ -77,6 +77,7 @@ export const ThermalSlipModal: React.FC<ThermalSlipModalProps> = ({
         <div className="modal-body" style={{ maxHeight: 'calc(85vh - 130px)', overflowY: 'auto' }}>
           {/* Print options toolbar */}
           <div
+            className="no-print"
             style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -150,7 +151,7 @@ export const ThermalSlipModal: React.FC<ThermalSlipModalProps> = ({
                 >
                   {/* Header */}
                   <div style={{ fontWeight: 'bold', fontSize: paperWidth === '58mm' ? '12px' : '13px', letterSpacing: '0.5px' }}>
-                    PERPUSTAKAAN UMS
+                    UPT Perpustakaan dan Layanan Digital UMS
                   </div>
                   <div style={{ fontSize: '10px', marginTop: 2 }}>
                     MEJA LAYANAN PUSTAKAWAN
@@ -238,7 +239,7 @@ export const ThermalSlipModal: React.FC<ThermalSlipModalProps> = ({
 
                   <div style={{ fontSize: '9px', textAlign: 'center', color: '#555' }}>
                     Terima kasih telah berkunjung.<br />
-                    Perpustakaan UMS • Ramah & Edukatif
+                    UPT Perpustakaan dan Layanan Digital UMS
                   </div>
                 </div>
               ))}

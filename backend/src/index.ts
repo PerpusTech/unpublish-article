@@ -9,6 +9,7 @@ import { ArticleController } from './controllers/articleController';
 import { AuditController } from './controllers/auditController';
 import { UserController } from './controllers/userController';
 import { AnalyticsController } from './controllers/analyticsController';
+import { BackupController } from './controllers/backupController';
 import { requireAdminAuth } from './middlewares/adminAuth';
 import { requirePatronSession, optionalPatronSession } from './middlewares/patronAuth';
 import { TokenService } from './services/tokenService';
@@ -56,6 +57,13 @@ api.get('/admin/audit-logs', requireAdminAuth, AuditController.listLogs);
 api.get('/admin/audit-logs/export', requireAdminAuth, AuditController.exportCsv);
 api.get('/admin/analytics', requireAdminAuth, AnalyticsController.getAnalytics);
 api.get('/admin/incidents/recent', requireAdminAuth, TokenController.getRecentIncidents);
+api.get('/admin/eprints-status', requireAdminAuth, ArticleController.getDbStatus);
+
+// ================= DATABASE BACKUP & MAINTENANCE =================
+api.get('/admin/backup/stats', requireAdminAuth, BackupController.getDatabaseStats);
+api.get('/admin/backup/download', requireAdminAuth, BackupController.downloadBackup);
+api.get('/admin/backup/export-json', requireAdminAuth, BackupController.exportJson);
+api.post('/admin/backup/optimize', requireAdminAuth, BackupController.optimizeDatabase);
 
 // ================= USER MANAGEMENT ROUTES =================
 api.get('/admin/users', requireAdminAuth, UserController.listUsers);

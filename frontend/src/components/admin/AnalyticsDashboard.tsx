@@ -121,91 +121,105 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onShowTo
         </button>
       </div>
 
-      {/* 6 Key Performance Indicators (KPI Cards) */}
-      <div className="stat-card-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-        <div className="admin-metric-card metric-primary">
-          <div className="admin-metric-content">
-            <div className="admin-metric-label">Total Akses Naskah</div>
+      {/* 6 Key Performance Indicators (KPI Cards - Editorial Minimalist) */}
+      <div className="stat-card-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+        <div className="admin-metric-card">
+          <div className="admin-metric-header-row">
+            <span className="admin-metric-label">Total Akses Naskah</span>
+            <div className="admin-metric-icon-wrap">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+              </svg>
+            </div>
+          </div>
+          <div>
             <div className="admin-metric-number">{kpis.totalDocumentViews.toLocaleString('id-ID')}</div>
             <div className="admin-metric-subtext">Akumulasi pembacaan berkas PDF</div>
           </div>
-          <div className="admin-metric-icon-wrap">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-            </svg>
-          </div>
         </div>
 
-        <div className="admin-metric-card metric-accent">
-          <div className="admin-metric-content">
-            <div className="admin-metric-label">Pemustaka Terdaftar</div>
+        <div className="admin-metric-card">
+          <div className="admin-metric-header-row">
+            <span className="admin-metric-label">Pemustaka Terdaftar</span>
+            <div className="admin-metric-icon-wrap">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+            </div>
+          </div>
+          <div>
             <div className="admin-metric-number">{kpis.uniquePatrons.toLocaleString('id-ID')}</div>
             <div className="admin-metric-subtext">Jumlah NIM mahasiswa aktif membaca</div>
           </div>
-          <div className="admin-metric-icon-wrap">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
-          </div>
         </div>
 
-        <div className="admin-metric-card metric-neutral">
-          <div className="admin-metric-content">
-            <div className="admin-metric-label">Total Tiket Diterbitkan</div>
+        <div className="admin-metric-card">
+          <div className="admin-metric-header-row">
+            <span className="admin-metric-label">Total Diterbitkan</span>
+            <div className="admin-metric-icon-wrap">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="7" width="20" height="14" rx="2" />
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+              </svg>
+            </div>
+          </div>
+          <div>
             <div className="admin-metric-number">{kpis.totalTokens.toLocaleString('id-ID')}</div>
             <div className="admin-metric-subtext">{kpis.activeTokens} sedang aktif membaca</div>
           </div>
-          <div className="admin-metric-icon-wrap">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="7" width="20" height="14" rx="2" />
-              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-            </svg>
-          </div>
         </div>
 
-        <div className="admin-metric-card" style={{ borderLeft: '4px solid #10b981' }}>
-          <div className="admin-metric-content">
-            <div className="admin-metric-label">Rata-rata Durasi Sesi</div>
-            <div className="admin-metric-number">{kpis.averageDurationMinutes} <span style={{ fontSize: 14, fontWeight: 600 }}>Menit</span></div>
+        <div className="admin-metric-card">
+          <div className="admin-metric-header-row">
+            <span className="admin-metric-label">Rata-rata Durasi</span>
+            <div className="admin-metric-icon-wrap">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+            </div>
+          </div>
+          <div>
+            <div className="admin-metric-number">
+              {kpis.averageDurationMinutes} <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-muted)' }}>Menit</span>
+            </div>
             <div className="admin-metric-subtext">Waktu izin baca per pemustaka</div>
           </div>
-          <div className="admin-metric-icon-wrap" style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981' }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-          </div>
         </div>
 
-        <div className="admin-metric-card" style={{ borderLeft: '4px solid #ef4444' }}>
-          <div className="admin-metric-content">
-            <div className="admin-metric-label">Tiket Dicabut / Dibatalkan</div>
+        <div className="admin-metric-card">
+          <div className="admin-metric-header-row">
+            <span className="admin-metric-label">Tiket Dicabut</span>
+            <div className="admin-metric-icon-wrap">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="15" y1="9" x2="9" y2="15" />
+                <line x1="9" y1="9" x2="15" y2="15" />
+              </svg>
+            </div>
+          </div>
+          <div>
             <div className="admin-metric-number">{kpis.revokedTokens.toLocaleString('id-ID')}</div>
-            <div className="admin-metric-subtext">Sesi dihentikan dini oleh pustakawan</div>
-          </div>
-          <div className="admin-metric-icon-wrap" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="15" y1="9" x2="9" y2="15" />
-              <line x1="9" y1="9" x2="15" y2="15" />
-            </svg>
+            <div className="admin-metric-subtext">Sesi dihentikan oleh pustakawan</div>
           </div>
         </div>
 
-        <div className="admin-metric-card" style={{ borderLeft: '4px solid #f59e0b' }}>
-          <div className="admin-metric-content">
-            <div className="admin-metric-label">Tiket Menunggu Klaim</div>
+        <div className="admin-metric-card">
+          <div className="admin-metric-header-row">
+            <span className="admin-metric-label">Menunggu Klaim</span>
+            <div className="admin-metric-icon-wrap">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+              </svg>
+            </div>
+          </div>
+          <div>
             <div className="admin-metric-number">{kpis.pendingTokens.toLocaleString('id-ID')}</div>
             <div className="admin-metric-subtext">Belum diaktivasi di perangkat</div>
-          </div>
-          <div className="admin-metric-icon-wrap" style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b' }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-            </svg>
           </div>
         </div>
       </div>

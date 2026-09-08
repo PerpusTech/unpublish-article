@@ -357,7 +357,13 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
                     gap: 6,
                   }}
                 >
-                  <span>🎟️ Tiket Tunggal (Individu)</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="4" width="18" height="16" rx="2" />
+                    <line x1="7" y1="8" x2="17" y2="8" />
+                    <line x1="7" y1="12" x2="17" y2="12" />
+                    <line x1="7" y1="16" x2="13" y2="16" />
+                  </svg>
+                  <span>Tiket Tunggal (Individu)</span>
                 </button>
                 <button
                   type="button"
@@ -382,7 +388,13 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
                     gap: 6,
                   }}
                 >
-                  <span>👥 Tiket Massal (Kelompok / Kelas Riset)</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                  <span>Tiket Massal (Kelompok / Kelas Riset)</span>
                 </button>
               </div>
             )}
@@ -513,7 +525,7 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
                   }}
                 >
                   <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-primary)', fontFamily: 'var(--font-heading)', letterSpacing: '0.5px' }}>
-                    PERPUSTAKAAN UNIVERSITAS MUHAMMADIYAH SURAKARTA
+                    UPT PERPUSTAKAAN DAN LAYANAN DIGITAL UNIVERSITAS MUHAMMADIYAH SURAKARTA
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 16, fontFamily: 'var(--font-heading)' }}>
                     SLIP VOUCHER AKSES REPOSITORI UNPUBLISH
@@ -632,7 +644,7 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
                     <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
                     <rect x="6" y="14" width="12" height="8" />
                   </svg>
-                  <span>🖨️ Cetak Slip Termal (POS)</span>
+                  <span>Cetak Slip Termal (POS)</span>
                 </button>
 
                 <button
@@ -664,7 +676,7 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
                       onClick={() => setBatchInputMode('PASTE')}
                       style={{ fontSize: 12, padding: '3px 8px' }}
                     >
-                      📋 Salin-Tempel Teks / CSV
+                      Salin-Tempel Teks / CSV
                     </button>
                     <button
                       type="button"
@@ -672,7 +684,7 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
                       onClick={() => setBatchInputMode('ROWS')}
                       style={{ fontSize: 12, padding: '3px 8px' }}
                     >
-                      📑 Input Tabel Baris
+                      Input Tabel Baris
                     </button>
                   </div>
                 </div>
@@ -881,7 +893,7 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
                         <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
                         <rect x="6" y="14" width="12" height="8" />
                       </svg>
-                      <span>🖨️ Cetak Semua Slip Termal ({batchGeneratedResults.length})</span>
+                      <span>Cetak Semua Slip Termal ({batchGeneratedResults.length})</span>
                     </button>
                   </div>
                 </div>
@@ -939,7 +951,7 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
                                 }}
                                 title="Cetak slip termal"
                               >
-                                🖨️ Slip
+                                Slip Termal
                               </button>
                             </div>
                           </td>

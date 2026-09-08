@@ -4,7 +4,7 @@ import { ArticleCard } from '../components/patron/ArticleCard';
 import { ArticleCardSkeleton } from '../components/patron/ArticleCardSkeleton';
 import { ArticleDetailModal } from '../components/patron/ArticleDetailModal';
 import { PDFCanvasViewer } from '../components/pdf/PDFCanvasViewer';
-import { BrowseItemsModal, BrowseCategory } from '../components/patron/BrowseItemsModal';
+import { BrowseItemsModal, BrowseCategory, ActiveFacetsState } from '../components/patron/BrowseItemsModal';
 import { PaginationControls } from '../components/common/PaginationControls';
 import { copyToClipboard } from '../utils/clipboard';
 
@@ -17,6 +17,19 @@ export interface RecentReadItem {
   openedAt: string;
 }
 
+export interface FacetedFilters {
+  status: 'ALL' | 'UNPUBLISH' | 'PUBLISH';
+  year?: number;
+  division?: string;
+  divisionLabel?: string;
+  type?: string;
+  typeLabel?: string;
+  subject?: string;
+  subjectLabel?: string;
+  author?: string;
+  authorLabel?: string;
+}
+
 interface PatronViewProps {
   session: PatronSession | null;
   onOpenClaimModal: () => void;
@@ -27,7 +40,9 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
   const [total, setTotal] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'UNPUBLISH' | 'PUBLISH'>('ALL');
+  const [facets, setFacets] = useState<FacetedFilters>({
+    status: 'ALL',
+  });
   const [selectedArticle, setSelectedArticle] = useState<ArticleItem | null>(null);
   const [isCopied, setIsCopied] = useState<boolean>(false);
 
@@ -59,7 +74,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
       ].slice(0, 6);
       try {
         sessionStorage.setItem('ums_patron_recent_reads', JSON.stringify(updated));
-      } catch {}
+      } catch { }
       return updated;
     });
   };
@@ -68,17 +83,12 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
     setRecentReads([]);
     try {
       sessionStorage.removeItem('ums_patron_recent_reads');
-    } catch {}
+    } catch { }
   };
 
   // Browse Items State
   const [isBrowseModalOpen, setIsBrowseModalOpen] = useState<boolean>(false);
   const [browseCategoryTab, setBrowseCategoryTab] = useState<BrowseCategory>('year');
-  const [activeBrowseFilter, setActiveBrowseFilter] = useState<{
-    category: BrowseCategory;
-    value: string;
-    label: string;
-  } | null>(null);
 
   // PDF Viewer State
   const [activePdf, setActivePdf] = useState<{
@@ -97,7 +107,12 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
   const pageSizeRef = React.useRef(pageSize);
   pageSizeRef.current = pageSize;
 
-  const loadArticles = async (targetPage?: number, targetPageSize?: number) => {
+  const loadArticles = async (
+    targetPage?: number,
+    targetPageSize?: number,
+    overrideFacets?: FacetedFilters,
+    overrideQuery?: string
+  ) => {
     if (!session) {
       setArticles([]);
       return;
@@ -105,17 +120,19 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
 
     const pageToLoad = targetPage !== undefined ? targetPage : currentPageRef.current;
     const sizeToLoad = targetPageSize !== undefined ? targetPageSize : pageSizeRef.current;
+    const currentFacets = overrideFacets !== undefined ? overrideFacets : facets;
+    const currentQuery = overrideQuery !== undefined ? overrideQuery : searchQuery;
 
     setLoading(true);
     try {
       const res = await api.searchArticles({
-        q: searchQuery.trim() || undefined,
-        status: statusFilter,
-        year: activeBrowseFilter?.category === 'year' ? parseInt(activeBrowseFilter.value, 10) : undefined,
-        division: activeBrowseFilter?.category === 'division' ? activeBrowseFilter.value : undefined,
-        type: activeBrowseFilter?.category === 'type' ? activeBrowseFilter.value : undefined,
-        subject: activeBrowseFilter?.category === 'subject' ? activeBrowseFilter.value : undefined,
-        author: activeBrowseFilter?.category === 'author' ? activeBrowseFilter.value : undefined,
+        q: currentQuery.trim() || undefined,
+        status: currentFacets.status,
+        year: currentFacets.year,
+        division: currentFacets.division,
+        type: currentFacets.type,
+        subject: currentFacets.subject,
+        author: currentFacets.author,
         page: pageToLoad,
         limit: sizeToLoad,
       });
@@ -138,7 +155,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
       setIsBrowseModalOpen(false);
     }
     loadArticles(1, pageSize);
-  }, [session?.id, statusFilter, activeBrowseFilter]);
+  }, [session?.id, facets]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,18 +164,63 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
 
   const handleClearSearch = () => {
     setSearchQuery('');
-    if (session) {
-      setLoading(true);
-      api.searchArticles({ status: statusFilter, page: 1, limit: pageSize })
-        .then((res) => {
-          setArticles(res.items);
-          setTotal(res.total);
-          setTotalPages(res.totalPages || 1);
-          setCurrentPage(1);
-        })
-        .catch(console.error)
-        .finally(() => setLoading(false));
-    }
+    loadArticles(1, pageSize, facets, '');
+  };
+
+  const handleSelectFacet = (cat: BrowseCategory, val: string, lbl: string) => {
+    setFacets((prev) => {
+      const next: FacetedFilters = { ...prev };
+      if (cat === 'year') {
+        next.year = parseInt(val, 10);
+      } else if (cat === 'division') {
+        next.division = val;
+        next.divisionLabel = lbl.replace(/^Divisi:\s*/, '');
+      } else if (cat === 'type') {
+        next.type = val;
+        next.typeLabel = lbl.replace(/^Jenis:\s*/, '');
+      } else if (cat === 'subject') {
+        next.subject = val;
+        next.subjectLabel = lbl.replace(/^Subjek:\s*/, '');
+      } else if (cat === 'author') {
+        next.author = val;
+        next.authorLabel = lbl.replace(/^Penulis:\s*/, '');
+      }
+      return next;
+    });
+  };
+
+  const handleRemoveFacet = (cat: BrowseCategory) => {
+    setFacets((prev) => {
+      const next: FacetedFilters = { ...prev };
+      if (cat === 'year') delete next.year;
+      else if (cat === 'division') {
+        delete next.division;
+        delete next.divisionLabel;
+      } else if (cat === 'type') {
+        delete next.type;
+        delete next.typeLabel;
+      } else if (cat === 'subject') {
+        delete next.subject;
+        delete next.subjectLabel;
+      } else if (cat === 'author') {
+        delete next.author;
+        delete next.authorLabel;
+      }
+      return next;
+    });
+  };
+
+  const handleStatusChange = (status: 'ALL' | 'UNPUBLISH' | 'PUBLISH') => {
+    setFacets((prev) => ({ ...prev, status }));
+  };
+
+  const handleRemoveStatusFacet = () => {
+    setFacets((prev) => ({ ...prev, status: 'ALL' }));
+  };
+
+  const handleClearAllFilters = () => {
+    setFacets({ status: 'ALL' });
+    setSearchQuery('');
   };
 
   const handlePageChange = (newPage: number) => {
@@ -202,6 +264,53 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
     setSelectedArticle(art);
   };
 
+  const renderCategoryIcon = (cat: BrowseCategory, size = 14) => {
+    switch (cat) {
+      case 'year':
+        return (
+          <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+        );
+      case 'subject':
+        return (
+          <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+            <line x1="7" y1="7" x2="7.01" y2="7" />
+          </svg>
+        );
+      case 'division':
+        return (
+          <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
+            <path d="M9 22v-4h6v4" />
+            <path d="M8 6h.01" />
+            <path d="M16 6h.01" />
+            <path d="M12 6h.01" />
+          </svg>
+        );
+      case 'type':
+        return (
+          <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+          </svg>
+        );
+      case 'author':
+        return (
+          <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+        );
+    }
+  };
+
   return (
     <div className="page-transition">
       {!session ? (
@@ -225,7 +334,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
               textTransform: 'uppercase',
             }}
           >
-            <span>Perpustakaan UMS</span>
+            <span>UPT Perpustakaan dan Layanan Digital UMS</span>
             <span style={{ color: 'var(--color-accent)' }}>•</span>
             <span>Repositori Naskah Khusus</span>
           </div>
@@ -252,7 +361,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
               margin: '0 auto 28px',
             }}
           >
-            Platform pembacaan digital naskah repositori EPrints UMS yang berstatus <em>unpublish</em> (Buffer & Inbox). 
+            Platform pembacaan digital naskah repositori EPrints UMS yang berstatus <em>unpublish</em> (Buffer & Inbox).
             Dirancang secara aman dengan proteksi kanvas dan penandaan identitas otomatis demi menjaga hak orisinalitas riset civitas akademik.
           </p>
 
@@ -328,7 +437,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
               color: 'var(--color-text-light)',
             }}
           >
-            Belum memiliki tiket token? Silakan kunjungi <strong>Meja Layanan Perpustakaan UMS</strong> untuk mendapatkan tiket sesi membaca.
+            Belum memiliki tiket token? Silakan kunjungi <strong>Meja Layanan UPT Perpustakaan dan Layanan Digital UMS</strong> untuk mendapatkan tiket sesi membaca.
           </div>
         </div>
       ) : (
@@ -659,52 +768,50 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
                 Jelajahi Repositori:
               </span>
               {[
-                { id: 'year' as BrowseCategory, label: 'Tahun' },
-                { id: 'subject' as BrowseCategory, label: 'Subjek' },
-                { id: 'division' as BrowseCategory, label: 'Divisi / Fakultas' },
-                { id: 'type' as BrowseCategory, label: 'Jenis Naskah' },
-                { id: 'author' as BrowseCategory, label: 'Penulis' },
-              ].map((cat) => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => {
-                    setBrowseCategoryTab(cat.id);
-                    setIsBrowseModalOpen(true);
-                  }}
-                  className="pill-btn"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    padding: '4px 10px',
-                    fontSize: 12,
-                    backgroundColor: activeBrowseFilter?.category === cat.id ? 'rgba(59, 130, 246, 0.12)' : undefined,
-                    borderColor: activeBrowseFilter?.category === cat.id ? 'var(--color-primary)' : undefined,
-                    color: activeBrowseFilter?.category === cat.id ? 'var(--color-primary)' : undefined,
-                    fontWeight: activeBrowseFilter?.category === cat.id ? 700 : 500,
-                  }}
-                >
-                  <span>{cat.label}</span>
-                </button>
-              ))}
+                { id: 'year' as BrowseCategory, label: 'Tahun', activeVal: facets.year },
+                { id: 'subject' as BrowseCategory, label: 'Subjek', activeVal: facets.subjectLabel || facets.subject },
+                { id: 'division' as BrowseCategory, label: 'Divisi / Fakultas', activeVal: facets.divisionLabel || facets.division },
+                { id: 'type' as BrowseCategory, label: 'Jenis Naskah', activeVal: facets.typeLabel || facets.type },
+                { id: 'author' as BrowseCategory, label: 'Penulis', activeVal: facets.authorLabel || facets.author },
+              ].map((cat) => {
+                const isActive = Boolean(cat.activeVal);
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      setBrowseCategoryTab(cat.id);
+                      setIsBrowseModalOpen(true);
+                    }}
+                    className={`facet-browse-pill ${isActive ? 'active' : ''}`}
+                    title={isActive ? `Filter aktif: ${cat.activeVal}. Klik untuk ubah.` : `Buka filter ${cat.label}`}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon(cat.id, 13)}</span>
+                    <span>{cat.label}</span>
+                    {isActive && (
+                      <span className="facet-active-indicator" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
+            {/* Status Filter Pills */}
             <div className="filter-pills" style={{ marginTop: 12 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', marginRight: 4 }}>
                 Status Akses:
               </span>
               <button
                 type="button"
-                className={`pill-btn ${statusFilter === 'ALL' ? 'active' : ''}`}
-                onClick={() => setStatusFilter('ALL')}
+                className={`pill-btn ${facets.status === 'ALL' ? 'active' : ''}`}
+                onClick={() => handleStatusChange('ALL')}
               >
                 Semua Koleksi Repositori
               </button>
               <button
                 type="button"
-                className={`pill-btn ${statusFilter === 'UNPUBLISH' ? 'active' : ''}`}
-                onClick={() => setStatusFilter('UNPUBLISH')}
+                className={`pill-btn ${facets.status === 'UNPUBLISH' ? 'active' : ''}`}
+                onClick={() => handleStatusChange('UNPUBLISH')}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-accent)' }} />
@@ -712,8 +819,8 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
               </button>
               <button
                 type="button"
-                className={`pill-btn ${statusFilter === 'PUBLISH' ? 'active' : ''}`}
-                onClick={() => setStatusFilter('PUBLISH')}
+                className={`pill-btn ${facets.status === 'PUBLISH' ? 'active' : ''}`}
+                onClick={() => handleStatusChange('PUBLISH')}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-success)' }} />
@@ -721,63 +828,169 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
               </button>
             </div>
 
-            {/* Active Browse Filter Badge */}
-            {activeBrowseFilter && (
-              <div
-                style={{
-                  marginTop: 14,
-                  padding: '10px 14px',
-                  backgroundColor: 'rgba(59, 130, 246, 0.08)',
-                  border: '1px solid rgba(59, 130, 246, 0.25)',
-                  borderRadius: 'var(--radius-md)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                  flexWrap: 'wrap',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-primary)' }}>
-                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-                  </svg>
-                  <span style={{ color: 'var(--color-text-muted)' }}>Menyaring koleksi berdasarkan:</span>
-                  <span
-                    style={{
-                      fontWeight: 700,
-                      color: 'var(--color-primary)',
-                      backgroundColor: 'var(--color-surface)',
-                      padding: '3px 10px',
-                      borderRadius: 6,
-                      border: '1px solid rgba(59, 130, 246, 0.3)',
-                    }}
+            {/* Active Faceted Filter Chips Bar */}
+            {(facets.year ||
+              facets.division ||
+              facets.type ||
+              facets.subject ||
+              facets.author ||
+              facets.status !== 'ALL' ||
+              searchQuery.trim().length > 0) && (
+              <div className="faceted-search-panel">
+                <div className="faceted-search-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--color-primary)' }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                    </svg>
+                    <span>Filter Aktif (Faceted Search):</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="facet-clear-all-btn"
+                    onClick={handleClearAllFilters}
+                    title="Reset semua filter ke awal"
                   >
-                    {activeBrowseFilter.label}
-                  </span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                    <span>Hapus Semua Filter</span>
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveBrowseFilter(null)}
-                  style={{
-                    padding: '4px 10px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: '#ef4444',
-                    background: 'rgba(239, 68, 68, 0.08)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                  }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                  <span>Hapus Filter</span>
-                </button>
+
+                <div className="faceted-filter-chips-list">
+                  {/* Search Query Chip */}
+                  {searchQuery.trim().length > 0 && (
+                    <div className="facet-chip">
+                      <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="11" cy="11" r="8" />
+                          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        </svg>
+                      </span>
+                      <span className="facet-chip-category">Kata Kunci:</span>
+                      <span className="facet-chip-value">"{searchQuery.trim()}"</span>
+                      <button
+                        type="button"
+                        className="facet-chip-remove"
+                        onClick={handleClearSearch}
+                        title="Hapus kata kunci pencarian"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Status Chip */}
+                  {facets.status !== 'ALL' && (
+                    <div className="facet-chip">
+                      <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                      </span>
+                      <span className="facet-chip-category">Status:</span>
+                      <span className="facet-chip-value">
+                        {facets.status === 'UNPUBLISH' ? 'Khusus Perpustakaan (Unpublish)' : 'Terbit Terbuka (Archive)'}
+                      </span>
+                      <button
+                        type="button"
+                        className="facet-chip-remove"
+                        onClick={handleRemoveStatusFacet}
+                        title="Kembalikan ke semua status"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Year Chip */}
+                  {facets.year && (
+                    <div className="facet-chip">
+                      <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon('year', 12)}</span>
+                      <span className="facet-chip-category">Tahun:</span>
+                      <span className="facet-chip-value">{facets.year}</span>
+                      <button
+                        type="button"
+                        className="facet-chip-remove"
+                        onClick={() => handleRemoveFacet('year')}
+                        title="Hapus filter tahun"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Division / Faculty Chip */}
+                  {facets.division && (
+                    <div className="facet-chip">
+                      <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon('division', 12)}</span>
+                      <span className="facet-chip-category">Divisi:</span>
+                      <span className="facet-chip-value">{facets.divisionLabel || facets.division}</span>
+                      <button
+                        type="button"
+                        className="facet-chip-remove"
+                        onClick={() => handleRemoveFacet('division')}
+                        title="Hapus filter divisi"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Type Chip */}
+                  {facets.type && (
+                    <div className="facet-chip">
+                      <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon('type', 12)}</span>
+                      <span className="facet-chip-category">Jenis:</span>
+                      <span className="facet-chip-value">{facets.typeLabel || facets.type}</span>
+                      <button
+                        type="button"
+                        className="facet-chip-remove"
+                        onClick={() => handleRemoveFacet('type')}
+                        title="Hapus filter jenis naskah"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Subject Chip */}
+                  {facets.subject && (
+                    <div className="facet-chip">
+                      <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon('subject', 12)}</span>
+                      <span className="facet-chip-category">Subjek:</span>
+                      <span className="facet-chip-value">{facets.subjectLabel || facets.subject}</span>
+                      <button
+                        type="button"
+                        className="facet-chip-remove"
+                        onClick={() => handleRemoveFacet('subject')}
+                        title="Hapus filter subjek"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Author Chip */}
+                  {facets.author && (
+                    <div className="facet-chip">
+                      <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon('author', 12)}</span>
+                      <span className="facet-chip-category">Penulis:</span>
+                      <span className="facet-chip-value">{facets.authorLabel || facets.author}</span>
+                      <button
+                        type="button"
+                        className="facet-chip-remove"
+                        onClick={() => handleRemoveFacet('author')}
+                        title="Hapus filter penulis"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -790,6 +1003,8 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
               alignItems: 'center',
               marginBottom: 16,
               padding: '0 4px',
+              flexWrap: 'wrap',
+              gap: 8,
             }}
           >
             <div style={{ fontSize: 13, color: 'var(--color-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -800,6 +1015,27 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
               <span>
                 Menemukan <strong style={{ color: 'var(--color-text)' }}>{total.toLocaleString('id-ID')}</strong> naskah karya ilmiah repositori
               </span>
+            </div>
+
+            <div
+              style={{
+                fontSize: 11.5,
+                color: 'var(--color-primary)',
+                backgroundColor: 'var(--color-surface-subtle)',
+                border: '1px solid var(--color-border)',
+                padding: '3px 10px',
+                borderRadius: 9999,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                fontWeight: 600,
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <polyline points="19 12 12 19 5 12" />
+              </svg>
+              <span>Urutan: <strong>Terbaru Diunggah</strong></span>
             </div>
           </div>
 
@@ -907,14 +1143,13 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
         </div>
       )}
 
-      {/* Article Detail Modal */}
-      {selectedArticle && (
+      {/* Article Detail Modal (Returns back here when reader is closed) */}
+      {selectedArticle && !activePdf && (
         <ArticleDetailModal
           article={selectedArticle}
           onClose={() => setSelectedArticle(null)}
           onOpenPdf={(articleId: number, docId: number, title: string) => {
             handleOpenPdf(articleId, docId, title);
-            setSelectedArticle(null);
           }}
         />
       )}
@@ -930,14 +1165,14 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
         />
       )}
 
-      {/* Browse Items Modal */}
+      {/* Browse Items Modal with Multi-Faceted Filter Support */}
       <BrowseItemsModal
         isOpen={isBrowseModalOpen}
         activeCategory={browseCategoryTab}
+        activeFacets={facets}
         onClose={() => setIsBrowseModalOpen(false)}
-        onSelectFilter={(cat, val, lbl) => {
-          setActiveBrowseFilter({ category: cat, value: val, label: lbl });
-        }}
+        onSelectFilter={handleSelectFacet}
+        onRemoveFilter={handleRemoveFacet}
       />
     </div>
   );

@@ -53,7 +53,7 @@ export const MOCK_EPRINTS: EPrintItem[] = [
   {
     eprintid: 102,
     title: 'Uji Aktivitas Antibakteri Ekstrak Etanol Daun Kelor (Moringa oleifera) Terhadap Bakteri Staphylococcus aureus Resisten Metisilin (MRSA)',
-    abstract: 'Studi in vitro mengenai efektivitas fraksi etil asetat daun kelor dalam menghambat koloni MRSA klinis. Naskah ini merupakan bagian dari riset kolaborasi berpaten tertunda (patent pending), sehingga akses naskah penuh dibatasi secara internal di lingkungan perpustakaan UMS.',
+    abstract: 'Studi in vitro mengenai efektivitas fraksi etil asetat daun kelor dalam menghambat koloni MRSA klinis. Naskah ini merupakan bagian dari riset kolaborasi berpaten tertunda (patent pending), sehingga akses naskah penuh dibatasi secara internal di lingkungan UPT Perpustakaan dan Layanan Digital UMS.',
     date_year: 2025,
     type: 'thesis',
     eprint_status: 'buffer',

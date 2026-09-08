@@ -1,4 +1,24 @@
+import fs from 'fs';
+import { ENV } from '../config/env';
 import { mysqlPool, MOCK_EPRINTS, EPrintItem, DocumentItem } from '../config/eprintsDb';
+
+export interface EPrintsDbStatus {
+  mode: 'LIVE_MYSQL' | 'MOCK';
+  connected: boolean;
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  latencyMs: number;
+  totalArticles: number;
+  unpublishArticles: number;
+  publishArticles: number;
+  documentsPath: string;
+  documentsPathExists: boolean;
+  lastChecked: string;
+  statusMessage: string;
+  error?: string;
+}
 
 export interface SearchQuery {
   q?: string;
@@ -38,31 +58,61 @@ export class EPrintsService {
     const page = Math.max(1, query.page || 1);
     const limit = Math.max(1, Math.min(50, query.limit || 10));
 
-    // If using Mock or MySQL pool is not active
-    if (!mysqlPool) {
+    // Helper for mock dataset filtering
+    const filterMockDataset = (q: SearchQuery): EPrintItem[] => {
       let filtered = [...MOCK_EPRINTS];
 
       // Filter by Status
-      if (query.status === 'UNPUBLISH') {
+      if (q.status === 'UNPUBLISH') {
         filtered = filtered.filter((i) => i.eprint_status !== 'archive');
-      } else if (query.status === 'PUBLISH') {
+      } else if (q.status === 'PUBLISH') {
         filtered = filtered.filter((i) => i.eprint_status === 'archive');
       }
 
       // Filter by Year
-      if (query.year) {
-        filtered = filtered.filter((i) => i.date_year === Number(query.year));
+      if (q.year) {
+        filtered = filtered.filter((i) => i.date_year === Number(q.year));
+      }
+
+      // Filter by Division / Department
+      if (q.division) {
+        const divLower = q.division.toLowerCase().trim();
+        filtered = filtered.filter((i) => (i.department || '').toLowerCase().includes(divLower));
+      }
+
+      // Filter by Type
+      if (q.type) {
+        const typeLower = q.type.toLowerCase().trim();
+        filtered = filtered.filter((i) => (i.type || '').toLowerCase() === typeLower);
+      }
+
+      // Filter by Subject (in mock, matches department/title/abstract)
+      if (q.subject) {
+        const subLower = q.subject.toLowerCase().trim();
+        filtered = filtered.filter((i) =>
+          (i.department || '').toLowerCase().includes(subLower) ||
+          i.title.toLowerCase().includes(subLower) ||
+          i.abstract.toLowerCase().includes(subLower)
+        );
+      }
+
+      // Filter by Author / Creator
+      if (q.author) {
+        const authorLower = q.author.toLowerCase().trim();
+        filtered = filtered.filter((i) =>
+          i.creators.some((c) => c.toLowerCase().includes(authorLower))
+        );
       }
 
       // Filter by ID Number / NIM
-      if (query.id_number) {
-        const term = query.id_number.toLowerCase().trim();
+      if (q.id_number) {
+        const term = q.id_number.toLowerCase().trim();
         filtered = filtered.filter((i) => (i.id_number || i.nim || '').toLowerCase().includes(term));
       }
 
       // Filter by Search Query
-      if (query.q && query.q.trim().length > 0) {
-        const terms = query.q.toLowerCase().trim().split(/\s+/);
+      if (q.q && q.q.trim().length > 0) {
+        const terms = q.q.toLowerCase().trim().split(/\s+/);
         filtered = filtered.filter((item) => {
           const haystack = [
             item.title,
@@ -78,6 +128,20 @@ export class EPrintsService {
         });
       }
 
+      // Sort newest uploaded articles first (highest eprintid / newest upload)
+      filtered.sort((a, b) => {
+        if ((b.date_year || 0) !== (a.date_year || 0)) {
+          return (b.date_year || 0) - (a.date_year || 0);
+        }
+        return b.eprintid - a.eprintid;
+      });
+
+      return filtered;
+    };
+
+    // If using Mock or MySQL pool is not active
+    if (!mysqlPool) {
+      const filtered = filterMockDataset(query);
       const total = filtered.length;
       const startIndex = (page - 1) * limit;
       const paginated = filtered.slice(startIndex, startIndex + limit);
@@ -176,7 +240,7 @@ export class EPrintsService {
         `SELECT e.eprintid, e.title, e.abstract, e.date_year, e.type, e.eprint_status, e.department, e.id_number, e.nim, e.nidn
          FROM eprint e
          WHERE ${whereSql}
-         ORDER BY e.date_year DESC, e.eprintid DESC
+         ORDER BY e.eprintid DESC
          LIMIT ? OFFSET ?`,
         [...params, limit, offset]
       );
@@ -558,6 +622,98 @@ export class EPrintsService {
       label: value,
       count
     }));
+  }
+
+  /**
+   * Diagnostic test & real-time connection status for EPrints database
+   */
+  public static async getConnectionStatus(): Promise<EPrintsDbStatus> {
+    const isMock = !mysqlPool || ENV.EPRINTS_USE_MOCK;
+    const documentsPath = ENV.EPRINTS_DOCUMENTS_PATH || '/eprints/documents';
+    let documentsPathExists = false;
+    try {
+      documentsPathExists = fs.existsSync(documentsPath);
+    } catch {
+      documentsPathExists = false;
+    }
+
+    if (isMock || !mysqlPool) {
+      const totalArticles = MOCK_EPRINTS.length;
+      const unpublishArticles = MOCK_EPRINTS.filter((a) => a.eprint_status !== 'archive').length;
+      const publishArticles = totalArticles - unpublishArticles;
+
+      return {
+        mode: 'MOCK',
+        connected: true,
+        host: ENV.EPRINTS_DB_HOST || 'local-mock',
+        port: ENV.EPRINTS_DB_PORT || 3306,
+        database: ENV.EPRINTS_DB_NAME || 'eprints_mock',
+        user: ENV.EPRINTS_DB_USER || 'mock_user',
+        latencyMs: 1,
+        totalArticles,
+        unpublishArticles,
+        publishArticles,
+        documentsPath,
+        documentsPathExists,
+        lastChecked: new Date().toISOString(),
+        statusMessage: 'Menggunakan Mock Data Adapter (Lingkungan Pengembangan / Simulasi Lokal)',
+      };
+    }
+
+    // Live MySQL Check
+    const start = Date.now();
+    try {
+      await mysqlPool.query('SELECT 1 as ping');
+      const latencyMs = Date.now() - start;
+
+      const [counts]: any = await mysqlPool.query(`
+        SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN eprint_status IN ('buffer', 'inbox') THEN 1 ELSE 0 END) as unpublish,
+          SUM(CASE WHEN eprint_status = 'archive' THEN 1 ELSE 0 END) as publish
+        FROM eprint
+      `);
+
+      const totalArticles = Number(counts[0]?.total || 0);
+      const unpublishArticles = Number(counts[0]?.unpublish || 0);
+      const publishArticles = Number(counts[0]?.publish || 0);
+
+      return {
+        mode: 'LIVE_MYSQL',
+        connected: true,
+        host: ENV.EPRINTS_DB_HOST,
+        port: ENV.EPRINTS_DB_PORT,
+        database: ENV.EPRINTS_DB_NAME,
+        user: ENV.EPRINTS_DB_USER,
+        latencyMs,
+        totalArticles,
+        unpublishArticles,
+        publishArticles,
+        documentsPath,
+        documentsPathExists,
+        lastChecked: new Date().toISOString(),
+        statusMessage: `Terhubung ke Live MySQL EPrints UMS (${ENV.EPRINTS_DB_NAME})`,
+      };
+    } catch (err: any) {
+      const latencyMs = Date.now() - start;
+      return {
+        mode: 'LIVE_MYSQL',
+        connected: false,
+        host: ENV.EPRINTS_DB_HOST,
+        port: ENV.EPRINTS_DB_PORT,
+        database: ENV.EPRINTS_DB_NAME,
+        user: ENV.EPRINTS_DB_USER,
+        latencyMs,
+        totalArticles: 0,
+        unpublishArticles: 0,
+        publishArticles: 0,
+        documentsPath,
+        documentsPathExists,
+        lastChecked: new Date().toISOString(),
+        statusMessage: 'Koneksi ke Live MySQL Terputus / Gagal',
+        error: err.message || String(err),
+      };
+    }
   }
 }
 

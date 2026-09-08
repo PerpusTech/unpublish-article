@@ -239,46 +239,63 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // 1. Anti-Snipping Tool / Screen Blur when window loses focus (onBlur / Alt-Tab / Win+Shift+S)
+  // 1. Anti-Snipping Tool / Screen Blur when window loses focus (Win+Shift+S, Alt-Tab, Screen Grabber)
   useEffect(() => {
-    const handleBlur = () => {
-      setIsWindowFocused(false);
-    };
-
-    const handleFocus = () => {
-      setIsWindowFocused(true);
-    };
-
     const handleVisibilityChange = () => {
       if (document.hidden) {
         setIsWindowFocused(false);
-      } else {
+      }
+    };
+
+    const handleWindowFocus = () => {
+      setIsWindowFocused(true);
+    };
+
+    const handleWindowBlur = () => {
+      // Whenever window loses OS focus (e.g. Snipping Tool overlay, Alt-Tab, third-party screen grabber),
+      // immediately blur canvas and show auto-shield curtain
+      setIsWindowFocused(false);
+    };
+
+    const handlePointerActivity = () => {
+      if (!document.hidden) {
         setIsWindowFocused(true);
       }
     };
 
-    window.addEventListener('blur', handleBlur);
-    window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('pointerdown', handlePointerActivity, { capture: true });
+    window.addEventListener('keydown', handlePointerActivity, { capture: true });
 
     return () => {
-      window.removeEventListener('blur', handleBlur);
-      window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('pointerdown', handlePointerActivity, { capture: true });
+      window.removeEventListener('keydown', handlePointerActivity, { capture: true });
     };
   }, []);
 
   // 2. Block PrintScreen, Snipping Shortcuts, DevTools, Ctrl+P, Ctrl+S & Clear Clipboard
   useEffect(() => {
     const triggerProtection = (msg: string, violationAction: string = 'SECURITY_VIOLATION') => {
-      // Clear clipboard to neutralize potential screen grabs
+      // 1. Immediately blank/blur screen and show auto-shield curtain
+      setIsWindowFocused(false);
+      setScreenshotWarning(msg);
+
+      // 2. Clear & overwrite clipboard buffer with official UMS Copyright Disclaimer
       try {
         if (typeof navigator !== 'undefined' && navigator?.clipboard?.writeText) {
-          navigator.clipboard.writeText('Perpustakaan UMS — Perlindungan Hak Cipta Naskah Unpublish.').catch(() => {});
+          navigator.clipboard.writeText(
+            'DOKUMEN INI DILINDUNGI HAK CIPTA UPT PERPUSTAKAAN DAN LAYANAN DIGITAL UNIVERSITAS MUHAMMADIYAH SURAKARTA.\n' +
+            'Perekaman dan tangkapan layar dinonaktifkan demi perlindungan hak orisinalitas riset civitas akademik.'
+          ).catch(() => { });
         }
       } catch { }
 
-      // Send live incident telemetry to backend for Librarian Live Alert
+      // 3. Send live incident telemetry to backend for Librarian Live Alert
       api.reportSecurityIncident({
         action: violationAction,
         articleId,
@@ -286,22 +303,15 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
         articleTitle,
       }).catch(() => { });
 
-      // Temporarily blank/blur screen
-      setIsWindowFocused(false);
-      setScreenshotWarning(msg);
-
-      setTimeout(() => {
-        setIsWindowFocused(true);
-      }, 1800);
-
+      // Auto-dismiss warning toast after 5 seconds, but keep canvas blurred until user consciously clicks/focuses back
       setTimeout(() => {
         setScreenshotWarning(null);
       }, 5000);
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // PrintScreen key
-      if (e.key === 'PrintScreen' || e.keyCode === 44) {
+      // PrintScreen key (standard, code, keyCode 44)
+      if (e.key === 'PrintScreen' || e.code === 'PrintScreen' || e.keyCode === 44 || e.which === 44) {
         e.preventDefault();
         e.stopPropagation();
         triggerProtection('Tombol PrintScreen terdeteksi! Tangkapan layar dinonaktifkan demi perlindungan hak cipta.', 'PRINTSCREEN_ATTEMPT');
@@ -345,18 +355,33 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'PrintScreen' || e.keyCode === 44) {
+      if (e.key === 'PrintScreen' || e.code === 'PrintScreen' || e.keyCode === 44 || e.which === 44) {
         e.preventDefault();
-        triggerProtection('Tangkapan layar dinonaktifkan.', 'PRINTSCREEN_ATTEMPT');
+        e.stopPropagation();
+        triggerProtection('Tombol PrintScreen terdeteksi! Tangkapan layar dinonaktifkan.', 'PRINTSCREEN_ATTEMPT');
       }
+    };
+
+    const handleCopyCut = (e: ClipboardEvent) => {
+      e.preventDefault();
+      try {
+        if (e.clipboardData) {
+          e.clipboardData.setData('text/plain', 'UPT Perpustakaan UMS — Perlindungan Hak Cipta Naskah Unpublish.');
+        }
+      } catch { }
+      triggerProtection('Penyalinan teks dokumen dinonaktifkan.', 'COPY_ATTEMPT');
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('keyup', handleKeyUp, true);
+    window.addEventListener('copy', handleCopyCut, true);
+    window.addEventListener('cut', handleCopyCut, true);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('keyup', handleKeyUp, true);
+      window.removeEventListener('copy', handleCopyCut, true);
+      window.removeEventListener('cut', handleCopyCut, true);
     };
   }, [articleId, docId, articleTitle, toggleFullscreen]);
 
@@ -694,7 +719,9 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
         )}
 
         {/* PDF Viewport & Watermark Area */}
+        {/* PDF Viewport & Watermark Area */}
         <div
+          ref={viewerContainerRef}
           style={{
             flex: 1,
             position: 'relative',
@@ -706,345 +733,359 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
             padding: '12px 16px',
           }}
         >
-          {viewMode === 'single' ? (
-            /* Single Page View */
-            <div
-              style={{
-                position: 'relative',
-                width: `${Math.round(960 * (zoom / 100))}px`,
-                minWidth: '320px',
-                maxWidth: 'none',
-                minHeight: '100%',
-                backgroundColor: '#ffffff',
-                boxShadow: '0 10px 40px rgba(0, 0, 0, 0.6)',
-                borderRadius: 4,
-                overflow: 'hidden',
-                flexShrink: 0,
-                transition: 'width 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
-              }}
-            >
-              <iframe
-                src={`${mainStreamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-                title="PDF Reader"
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  border: 'none',
-                  display: 'block',
-                }}
-              />
-
-              {/* Dynamic Multi-Line High-Density Watermark Overlay */}
+          {/* Inner Document Canvas Container with DRM Blur Filter */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'stretch',
+              minHeight: '100%',
+              width: '100%',
+              filter: !isWindowFocused ? 'blur(20px) saturate(0.2)' : 'none',
+              pointerEvents: !isWindowFocused ? 'none' : 'auto',
+              transition: 'filter 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+          >
+            {viewMode === 'single' ? (
+              /* Single Page View */
               <div
                 style={{
-                  position: 'absolute',
-                  inset: 0,
-                  pointerEvents: 'none',
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(2, 1fr)',
-                  gridTemplateRows: 'repeat(5, 1fr)',
-                  opacity: 0.22,
-                  zIndex: 40,
-                  userSelect: 'none',
-                  padding: '20px 0',
+                  position: 'relative',
+                  width: `${Math.round(960 * (zoom / 100))}px`,
+                  minWidth: '320px',
+                  maxWidth: 'none',
+                  minHeight: '100%',
+                  backgroundColor: '#ffffff',
+                  boxShadow: '0 10px 40px rgba(0, 0, 0, 0.6)',
+                  borderRadius: 4,
+                  overflow: 'hidden',
+                  flexShrink: 0,
+                  transition: 'width 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
                 }}
               >
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
+                <iframe
+                  src={`${mainStreamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                  title="PDF Reader"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: 'none',
+                    display: 'block',
+                  }}
+                />
+
+                {/* Dynamic Multi-Line High-Density Watermark Overlay */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    pointerEvents: 'none',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(2, 1fr)',
+                    gridTemplateRows: 'repeat(5, 1fr)',
+                    opacity: 0.22,
+                    zIndex: 40,
+                    userSelect: 'none',
+                    padding: '20px 0',
+                  }}
+                >
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
                     <div
+                      key={i}
                       style={{
-                        transform: 'rotate(-25deg)',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        color: '#0f172a',
-                        textAlign: 'center',
-                        lineHeight: 1.35,
-                        border: '1px dashed rgba(15, 23, 42, 0.5)',
-                        padding: '6px 14px',
-                        borderRadius: 6,
-                        backgroundColor: 'rgba(255, 255, 255, 0.55)',
-                        boxShadow: '0 2px 6px rgba(0, 0, 0, 0.05)',
-                      }}
-                    >
-                      <div style={{ fontSize: '10px', color: '#1e40af', letterSpacing: '0.5px' }}>
-                        PERPUSTAKAAN UNIVERSITAS MUHAMMADIYAH SURAKARTA
-                      </div>
-                      <div style={{ color: '#0f172a', fontWeight: 800 }}>
-                        {currentSession?.patron_name || 'PEMUSTAKA RESMI'} (NIM: {currentSession?.patron_nim || 'CIVITAS UMS'})
-                      </div>
-                      <div style={{ fontSize: '9.5px', color: '#475569' }}>
-                        TOKEN: {currentSession?.token_code || 'RESTRICTED'} • {currentTime}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            /* Two-Page Spread (Buku / Side-by-Side Comparative) View */
-            <div
-              style={{
-                position: 'relative',
-                width: `${Math.round(1760 * (zoom / 100))}px`,
-                minWidth: '640px',
-                maxWidth: 'none',
-                minHeight: '100%',
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: 12,
-                flexShrink: 0,
-                transition: 'width 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
-              }}
-            >
-              {/* Left Spread Pane (Primary Document) */}
-              <div
-                style={{
-                  position: 'relative',
-                  backgroundColor: '#ffffff',
-                  boxShadow: '0 10px 40px rgba(0, 0, 0, 0.6)',
-                  borderRadius: '4px 0 0 4px',
-                  overflow: 'hidden',
-                  borderRight: '2px solid #cbd5e1',
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-              >
-                {/* Left Pane Header Banner */}
-                <div
-                  style={{
-                    backgroundColor: '#0f172a',
-                    color: '#93c5fd',
-                    padding: '6px 12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    borderBottom: '1px solid #334155',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    zIndex: 30,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
-                    <span style={{ backgroundColor: '#1e40af', color: '#fff', padding: '1px 6px', borderRadius: 3, fontSize: 10 }}>
-                      HALAMAN KIRI (UTAMA)
-                    </span>
-                    <span style={{ color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {articleTitle}
-                    </span>
-                  </div>
-                </div>
-
-                <div style={{ flex: 1, position: 'relative' }}>
-                  <iframe
-                    src={`${mainStreamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-                    title="PDF Reader - Left Pane"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      border: 'none',
-                      display: 'block',
-                    }}
-                  />
-                  {/* Left Watermark */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      pointerEvents: 'none',
-                      display: 'grid',
-                      gridTemplateColumns: '1fr',
-                      gridTemplateRows: 'repeat(5, 1fr)',
-                      opacity: 0.22,
-                      zIndex: 40,
-                      userSelect: 'none',
-                      padding: '20px 0',
-                    }}
-                  >
-                    {[1, 2, 3, 4, 5].map((i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <div
-                          style={{
-                            transform: 'rotate(-25deg)',
-                            fontFamily: 'var(--font-mono)',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            color: '#0f172a',
-                            textAlign: 'center',
-                            lineHeight: 1.35,
-                            border: '1px dashed rgba(15, 23, 42, 0.5)',
-                            padding: '6px 14px',
-                            borderRadius: 6,
-                            backgroundColor: 'rgba(255, 255, 255, 0.55)',
-                          }}
-                        >
-                          <div style={{ fontSize: '10px', color: '#1e40af' }}>PERPUSTAKAAN UMS</div>
-                          <div style={{ color: '#0f172a', fontWeight: 800 }}>
-                            {currentSession?.patron_name || 'PEMUSTAKA'} ({currentSession?.patron_nim || 'UMS'})
-                          </div>
-                          <div style={{ fontSize: '9px', color: '#475569' }}>{currentTime}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Spread Pane (Secondary / Comparative Document) */}
-              <div
-                style={{
-                  position: 'relative',
-                  backgroundColor: '#ffffff',
-                  boxShadow: '0 10px 40px rgba(0, 0, 0, 0.6)',
-                  borderRadius: '0 4px 4px 0',
-                  overflow: 'hidden',
-                  borderLeft: '2px solid #cbd5e1',
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-              >
-                {/* Right Pane Header Banner with Document Switcher Button */}
-                <div
-                  style={{
-                    backgroundColor: '#0f172a',
-                    color: '#93c5fd',
-                    padding: '6px 12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    borderBottom: '1px solid #334155',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    zIndex: 30,
-                    gap: 8,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', flex: 1 }}>
-                    <span style={{ backgroundColor: '#0284c7', color: '#fff', padding: '1px 6px', borderRadius: 3, fontSize: 10 }}>
-                      HALAMAN KANAN
-                    </span>
-                    <span style={{ color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {secondaryDoc ? `${secondaryDoc.filename || secondaryDoc.title}` : articleTitle}
-                    </span>
-                  </div>
-
-                  {/* Switch PDF Document Button for Right Pane */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <button
-                      type="button"
-                      onClick={() => setIsDocPickerOpen(true)}
-                      title="Pilih dokumen / bab lain untuk dibandingkan berdampingan"
-                      style={{
-                        display: 'inline-flex',
+                        display: 'flex',
                         alignItems: 'center',
-                        gap: 5,
-                        backgroundColor: '#2563eb',
-                        color: '#ffffff',
-                        border: '1px solid #60a5fa',
-                        borderRadius: 5,
-                        padding: '3px 8px',
-                        fontSize: 11,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        boxShadow: '0 2px 4px rgba(37, 99, 235, 0.3)',
+                        justifyContent: 'center',
                       }}
                     >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                      </svg>
-                      <span>Pilih PDF Kanan</span>
-                      {currentArticleDetail?.documents && currentArticleDetail.documents.length > 1 && (
-                        <span style={{ backgroundColor: '#1d4ed8', padding: '0 4px', borderRadius: 3, fontSize: 9.5 }}>
-                          {currentArticleDetail.documents.length} File
-                        </span>
-                      )}
-                    </button>
-
-                    {secondaryDoc && (
-                      <button
-                        type="button"
-                        onClick={() => setSecondaryDoc(null)}
-                        title="Kembalikan ke dokumen asal yang sama"
+                      <div
                         style={{
-                          backgroundColor: '#334155',
-                          color: '#cbd5e1',
-                          border: '1px solid #475569',
-                          borderRadius: 5,
-                          padding: '3px 6px',
-                          fontSize: 10.5,
-                          cursor: 'pointer',
+                          transform: 'rotate(-25deg)',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          color: '#0f172a',
+                          textAlign: 'center',
+                          lineHeight: 1.35,
+                          border: '1px dashed rgba(15, 23, 42, 0.5)',
+                          padding: '6px 14px',
+                          borderRadius: 6,
+                          backgroundColor: 'rgba(255, 255, 255, 0.55)',
+                          boxShadow: '0 2px 6px rgba(0, 0, 0, 0.05)',
                         }}
                       >
-                        Reset
-                      </button>
-                    )}
+                        <div style={{ fontSize: '10px', color: '#1e40af', letterSpacing: '0.5px' }}>
+                          UPT PERPUSTAKAAN DAN LAYANAN DIGITAL UNIVERSITAS MUHAMMADIYAH SURAKARTA
+                        </div>
+                        <div style={{ color: '#0f172a', fontWeight: 800 }}>
+                          {currentSession?.patron_name || 'PEMUSTAKA RESMI'} (NIM: {currentSession?.patron_nim || 'CIVITAS UMS'})
+                        </div>
+                        <div style={{ fontSize: '9.5px', color: '#475569' }}>
+                          TOKEN: {currentSession?.token_code || 'RESTRICTED'} • {currentTime}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              /* Two-Page Spread (Buku / Side-by-Side Comparative) View */
+              <div
+                style={{
+                  position: 'relative',
+                  width: `${Math.round(1760 * (zoom / 100))}px`,
+                  minWidth: '640px',
+                  maxWidth: 'none',
+                  minHeight: '100%',
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 12,
+                  flexShrink: 0,
+                  transition: 'width 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
+                }}
+              >
+                {/* Left Spread Pane (Primary Document) */}
+                <div
+                  style={{
+                    position: 'relative',
+                    backgroundColor: '#ffffff',
+                    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.6)',
+                    borderRadius: '4px 0 0 4px',
+                    overflow: 'hidden',
+                    borderRight: '2px solid #cbd5e1',
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                >
+                  {/* Left Pane Header Banner */}
+                  <div
+                    style={{
+                      backgroundColor: '#0f172a',
+                      color: '#93c5fd',
+                      padding: '6px 12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderBottom: '1px solid #334155',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      zIndex: 30,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+                      <span style={{ backgroundColor: '#1e40af', color: '#fff', padding: '1px 6px', borderRadius: 3, fontSize: 10 }}>
+                        HALAMAN KIRI (UTAMA)
+                      </span>
+                      <span style={{ color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {articleTitle}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1, position: 'relative' }}>
+                    <iframe
+                      src={`${mainStreamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                      title="PDF Reader - Left Pane"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        border: 'none',
+                        display: 'block',
+                      }}
+                    />
+                    {/* Left Watermark */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        pointerEvents: 'none',
+                        display: 'grid',
+                        gridTemplateColumns: '1fr',
+                        gridTemplateRows: 'repeat(5, 1fr)',
+                        opacity: 0.22,
+                        zIndex: 40,
+                        userSelect: 'none',
+                        padding: '20px 0',
+                      }}
+                    >
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <div
+                            style={{
+                              transform: 'rotate(-25deg)',
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              color: '#0f172a',
+                              textAlign: 'center',
+                              lineHeight: 1.35,
+                              border: '1px dashed rgba(15, 23, 42, 0.5)',
+                              padding: '6px 14px',
+                              borderRadius: 6,
+                              backgroundColor: 'rgba(255, 255, 255, 0.55)',
+                            }}
+                          >
+                            <div style={{ fontSize: '10px', color: '#1e40af' }}>UPT Perpustakaan dan Layanan Digital UMS</div>
+                            <div style={{ color: '#0f172a', fontWeight: 800 }}>
+                              {currentSession?.patron_name || 'PEMUSTAKA'} ({currentSession?.patron_nim || 'UMS'})
+                            </div>
+                            <div style={{ fontSize: '9px', color: '#475569' }}>{currentTime}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                <div style={{ flex: 1, position: 'relative' }}>
-                  <iframe
-                    src={`${secondaryStreamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-                    title="PDF Reader - Right Pane"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      border: 'none',
-                      display: 'block',
-                    }}
-                  />
-                  {/* Right Watermark */}
+                {/* Right Spread Pane (Secondary / Comparative Document) */}
+                <div
+                  style={{
+                    position: 'relative',
+                    backgroundColor: '#ffffff',
+                    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.6)',
+                    borderRadius: '0 4px 4px 0',
+                    overflow: 'hidden',
+                    borderLeft: '2px solid #cbd5e1',
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                >
+                  {/* Right Pane Header Banner with Document Switcher Button */}
                   <div
                     style={{
-                      position: 'absolute',
-                      inset: 0,
-                      pointerEvents: 'none',
-                      display: 'grid',
-                      gridTemplateColumns: '1fr',
-                      gridTemplateRows: 'repeat(5, 1fr)',
-                      opacity: 0.22,
-                      zIndex: 40,
-                      userSelect: 'none',
-                      padding: '20px 0',
+                      backgroundColor: '#0f172a',
+                      color: '#93c5fd',
+                      padding: '6px 12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderBottom: '1px solid #334155',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      zIndex: 30,
+                      gap: 8,
                     }}
                   >
-                    {[1, 2, 3, 4, 5].map((i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <div
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', flex: 1 }}>
+                      <span style={{ backgroundColor: '#0284c7', color: '#fff', padding: '1px 6px', borderRadius: 3, fontSize: 10 }}>
+                        HALAMAN KANAN
+                      </span>
+                      <span style={{ color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {secondaryDoc ? `${secondaryDoc.filename || secondaryDoc.title}` : articleTitle}
+                      </span>
+                    </div>
+
+                    {/* Switch PDF Document Button for Right Pane */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => setIsDocPickerOpen(true)}
+                        title="Pilih dokumen / bab lain untuk dibandingkan berdampingan"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          backgroundColor: '#2563eb',
+                          color: '#ffffff',
+                          border: '1px solid #60a5fa',
+                          borderRadius: 5,
+                          padding: '3px 8px',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          boxShadow: '0 2px 4px rgba(37, 99, 235, 0.3)',
+                        }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                        <span>Pilih PDF Kanan</span>
+                        {currentArticleDetail?.documents && currentArticleDetail.documents.length > 1 && (
+                          <span style={{ backgroundColor: '#1d4ed8', padding: '0 4px', borderRadius: 3, fontSize: 9.5 }}>
+                            {currentArticleDetail.documents.length} File
+                          </span>
+                        )}
+                      </button>
+
+                      {secondaryDoc && (
+                        <button
+                          type="button"
+                          onClick={() => setSecondaryDoc(null)}
+                          title="Kembalikan ke dokumen asal yang sama"
                           style={{
-                            transform: 'rotate(-25deg)',
-                            fontFamily: 'var(--font-mono)',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            color: '#0f172a',
-                            textAlign: 'center',
-                            lineHeight: 1.35,
-                            border: '1px dashed rgba(15, 23, 42, 0.5)',
-                            padding: '6px 14px',
-                            borderRadius: 6,
-                            backgroundColor: 'rgba(255, 255, 255, 0.55)',
+                            backgroundColor: '#334155',
+                            color: '#cbd5e1',
+                            border: '1px solid #475569',
+                            borderRadius: 5,
+                            padding: '3px 6px',
+                            fontSize: 10.5,
+                            cursor: 'pointer',
                           }}
                         >
-                          <div style={{ fontSize: '10px', color: '#1e40af' }}>PERPUSTAKAAN UMS</div>
-                          <div style={{ color: '#0f172a', fontWeight: 800 }}>
-                            {currentSession?.patron_name || 'PEMUSTAKA'} ({currentSession?.patron_nim || 'UMS'})
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1, position: 'relative' }}>
+                    <iframe
+                      src={`${secondaryStreamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                      title="PDF Reader - Right Pane"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        border: 'none',
+                        display: 'block',
+                      }}
+                    />
+                    {/* Right Watermark */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        pointerEvents: 'none',
+                        display: 'grid',
+                        gridTemplateColumns: '1fr',
+                        gridTemplateRows: 'repeat(5, 1fr)',
+                        opacity: 0.22,
+                        zIndex: 40,
+                        userSelect: 'none',
+                        padding: '20px 0',
+                      }}
+                    >
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <div
+                            style={{
+                              transform: 'rotate(-25deg)',
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              color: '#0f172a',
+                              textAlign: 'center',
+                              lineHeight: 1.35,
+                              border: '1px dashed rgba(15, 23, 42, 0.5)',
+                              padding: '6px 14px',
+                              borderRadius: 6,
+                              backgroundColor: 'rgba(255, 255, 255, 0.55)',
+                            }}
+                          >
+                            <div style={{ fontSize: '10px', color: '#1e40af' }}>UPT Perpustakaan dan Layanan Digital UMS</div>
+                            <div style={{ color: '#0f172a', fontWeight: 800 }}>
+                              {currentSession?.patron_name || 'PEMUSTAKA'} ({currentSession?.patron_nim || 'UMS'})
+                            </div>
+                            <div style={{ fontSize: '9px', color: '#475569' }}>{currentTime}</div>
                           </div>
-                          <div style={{ fontSize: '9px', color: '#475569' }}>{currentTime}</div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Document Picker Modal for Dual Reading (Mode 2 Halaman) */}
           {isDocPickerOpen && (
@@ -1468,8 +1509,12 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                               borderRadius: 6,
                                             }}
                                           >
-                                            <span style={{ fontSize: 12, color: '#cbd5e1' }}>
-                                              📄 {d.filename || `Dokumen #${d.docid}`}
+                                            <span style={{ fontSize: 12, color: '#cbd5e1', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#ef4444' }}>
+                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                                <polyline points="14 2 14 8 20 8" />
+                                              </svg>
+                                              <span>{d.filename || `Dokumen #${d.docid}`}</span>
                                             </span>
                                             <button
                                               type="button"
@@ -1568,14 +1613,15 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
             </div>
           )}
 
-          {/* Anti-Snipping Tool / Window Unfocused Privacy Curtain */}
+          {/* Anti-Snipping Tool / Window Unfocused Privacy Auto-Shield Curtain */}
           {!isWindowFocused && (
             <div
+              onClick={() => setIsWindowFocused(true)}
               style={{
                 position: 'absolute',
                 inset: 0,
-                backdropFilter: 'blur(35px)',
-                backgroundColor: 'rgba(15, 23, 42, 0.94)',
+                backdropFilter: 'blur(36px)',
+                backgroundColor: 'rgba(9, 14, 26, 0.92)',
                 zIndex: 90,
                 display: 'flex',
                 flexDirection: 'column',
@@ -1585,73 +1631,106 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                 textAlign: 'center',
                 color: '#ffffff',
                 userSelect: 'none',
+                cursor: 'pointer',
+                animation: 'slideDownBanner 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
               }}
+              title="Klik di mana saja untuk mengaktifkan kembali tampilan pembaca naskah"
             >
               <div
                 style={{
-                  width: 64,
-                  height: 64,
+                  width: 68,
+                  height: 68,
                   borderRadius: '50%',
                   backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                  border: '2px solid rgba(239, 68, 68, 0.4)',
+                  border: '2px solid rgba(239, 68, 68, 0.5)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  marginBottom: 20,
+                  marginBottom: 18,
                   color: '#f87171',
+                  boxShadow: '0 0 24px rgba(239, 68, 68, 0.25)',
                 }}
               >
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
               </div>
 
               <div
                 style={{
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: 800,
-                  letterSpacing: '1.5px',
+                  letterSpacing: '1.8px',
                   color: '#f87171',
-                  marginBottom: 6,
+                  marginBottom: 8,
                   textTransform: 'uppercase',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  padding: '3px 10px',
+                  borderRadius: 20,
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
                 }}
               >
-                Perlindungan Hak Cipta Naskah
+                <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#ef4444' }} />
+                <span>DRM AUTO-SHIELD: TAB TIDAK AKTIF</span>
               </div>
 
               <h3
                 style={{
-                  fontSize: 20,
+                  fontSize: 22,
                   fontWeight: 800,
                   color: '#ffffff',
                   marginBottom: 10,
                   fontFamily: 'var(--font-heading)',
+                  letterSpacing: '-0.01em',
                 }}
               >
-                Tampilan Dinonaktifkan: Jendela Tidak Aktif
+                Tampilan Naskah Otomatis Disamarkan
               </h3>
 
               <p
                 style={{
-                  maxWidth: 440,
+                  maxWidth: 480,
                   fontSize: 13,
                   lineHeight: 1.6,
                   color: '#94a3b8',
                   marginBottom: 24,
                 }}
               >
-                Untuk mencegah perekaman layar & tangkapan naskah secara tidak sah, tampilan dokumen otomatis disamarkan saat jendela kehilangan fokus.
+                Sistem perlindungan hak cipta repositori UMS mendeteksi tab browser kehilangan fokus. Tampilan naskah otomatis diburamkan (*canvas auto-shield*) untuk mencegah perekaman layar dan tangkapan dokumen tidak berizin.
               </p>
 
               <button
                 type="button"
-                onClick={() => setIsWindowFocused(true)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsWindowFocused(true);
+                }}
                 className="btn btn-primary"
-                style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700 }}
+                style={{
+                  padding: '11px 26px',
+                  fontSize: 13.5,
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)',
+                }}
               >
-                Klik untuk Melanjutkan Membaca
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                <span>Fokus Kembali & Lanjutkan Membaca</span>
               </button>
+
+              <div style={{ marginTop: 14, fontSize: 11.5, color: '#64748b' }}>
+                (atau klik di sembarang tempat pada layar ini)
+              </div>
             </div>
           )}
         </div>
@@ -1668,7 +1747,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
             borderTop: '1px solid #334155',
           }}
         >
-          Perpustakaan Universitas Muhammadiyah Surakarta — Seluruh aktivitas membaca naskah tercatat dalam Log Audit institusional (NIM: {currentSession?.patron_nim || 'Guest'} • Token: {currentSession?.token_code || '-'}).
+          UPT Perpustakaan dan Layanan Digital Universitas Muhammadiyah Surakarta — Seluruh aktivitas membaca naskah tercatat dalam Log Audit institusional (NIM: {currentSession?.patron_nim || 'Guest'} • Token: {currentSession?.token_code || '-'}).
         </div>
       </div>
     </div>,

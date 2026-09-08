@@ -8,7 +8,7 @@ if (!fs.existsSync(ENV.DATA_DIR)) {
   fs.mkdirSync(ENV.DATA_DIR, { recursive: true });
 }
 
-const dbPath = path.join(ENV.DATA_DIR, 'app.db');
+export const dbPath = path.join(ENV.DATA_DIR, 'app.db');
 const db = new sqlite3.Database(dbPath);
 
 // Promisified DB helpers

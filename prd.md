@@ -60,7 +60,7 @@ Aplikasi web internal Perpustakaan Universitas Muhammadiyah Surakarta (UMS) untu
 3. **Masa Berlaku Klaim**: Token yang belum pernah diaktivasi memiliki masa hangus otomatis 24 jam sejak pembuatan.
 4. **Katalog Campuran Berlabel**: Pemustaka dapat menelusuri artikel yang berstatus *Publish* (arsip publik) maupun *Unpublish* (buffer/inbox/restricted), masing-masing diberi *status badge* yang jelas.
 5. **Watermark Dinamis**: Setiap halaman PDF yang dirender menyertakan watermark diagonal semi-transparan berformat:
-   `Perpustakaan UMS • [NIM] - [Nama Pemustaka] • Token: [TokenID] • [Tanggal & Waktu]`
+   `UPT Perpustakaan dan Layanan Digital UMS • [NIM] - [Nama Pemustaka] • Token: [TokenID] • [Tanggal & Waktu]`
 6. **Perpanjangan Sesi**: Admin dapat menambahkan waktu (misal: +30 atau +60 menit) langsung dari dasbor monitoring tanpa membuat pemustaka harus login ulang.
 
 ---

@@ -39,7 +39,7 @@ export const ShareTokenModal: React.FC<ShareTokenModalProps> = ({
   const originUrl = window.location.origin;
   const directClaimUrl = `${originUrl}/?claim_token=${encodeURIComponent(token.token_code)}`;
 
-  const waMessage = `*TIKET AKSES REPOSITORI UNPUBLISH — PERPUSTAKAAN UMS*
+  const waMessage = `*TIKET AKSES REPOSITORI UNPUBLISH — UPT Perpustakaan dan Layanan Digital UMS*
 
 Yth. Sdr/i *${token.patron_name}* (${token.patron_nim}),
 
@@ -54,12 +54,12 @@ ${directClaimUrl}
 2. Atau masukkan Kode Token di halaman beranda.
 3. Hitungan mundur durasi membaca dimulai saat token pertama kali diaktifkan.
 
-_Perpustakaan Universitas Muhammadiyah Surakarta_`;
+_UPT Perpustakaan dan Layanan Digital UMS_`;
 
-  const emailSubject = `[Perpustakaan UMS] Tiket Akses Repositori Unpublish (${token.token_code})`;
+  const emailSubject = `[UPT Perpustakaan dan Layanan Digital UMS] Tiket Akses Repositori Unpublish (${token.token_code})`;
   const emailBody = `Yth. Sdr/i ${token.patron_name} (${token.patron_nim}),
 
-Berikut adalah tiket otorisasi membaca naskah EPrints Unpublish Perpustakaan UMS:
+Berikut adalah tiket otorisasi membaca naskah EPrints Unpublish UPT Perpustakaan dan Layanan Digital UMS:
 
 - Kode Token: ${token.token_code}
 - Durasi Membaca: ${token.duration_minutes} Menit
@@ -71,7 +71,7 @@ Petunjuk Penggunaan:
 3. Durasi membaca akan mulai aktif setelah token diverifikasi.
 
 Salam hangat,
-Meja Layanan Perpustakaan UMS
+Meja Layanan UPT Perpustakaan dan Layanan Digital UMS
 https://library.ums.ac.id`;
 
   const handleCopyLink = async () => {
@@ -168,7 +168,7 @@ https://library.ums.ac.id`;
           {/* Action 1: Direct Claim URL */}
           <div style={{ marginBottom: 20 }}>
             <label className="form-label" htmlFor="share-direct-url-input" style={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
-              <span>🔗 Tautan Akses Langsung (Auto-Claim URL)</span>
+              <span>Tautan Akses Langsung (Auto-Claim URL)</span>
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <input
@@ -262,7 +262,7 @@ https://library.ums.ac.id`;
               onClick={handleCopyWaText}
               style={{ width: '100%', fontSize: 12 }}
             >
-              {copiedType === 'wa' ? '✓ Format Pesan WhatsApp Tersalin!' : '📋 Salin Teks Format WhatsApp'}
+              {copiedType === 'wa' ? '✓ Format Pesan WhatsApp Tersalin!' : 'Salin Teks Format WhatsApp'}
             </button>
           </div>
 
