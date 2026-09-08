@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { api, TokenAdminItem } from '../../services/api';
 import { ThermalSlipModal, ThermalSlipItem } from './ThermalSlipModal';
 import { ShareTokenModal } from './ShareTokenModal';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface TokenGeneratorModalProps {
   isOpen: boolean;
@@ -221,10 +222,12 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
     setBatchRows(updated);
   };
 
-  const handleCopy = (code: string) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
+  const handleCopy = async (code: string) => {
+    const ok = await copyToClipboard(code);
+    if (ok) {
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    }
   };
 
   const handleOpenSingleThermal = () => {

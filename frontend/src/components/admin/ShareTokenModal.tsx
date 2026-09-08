@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { TokenAdminItem } from '../../services/api';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface ShareTokenModalProps {
   isOpen: boolean;
@@ -73,18 +74,22 @@ Salam hangat,
 Meja Layanan Perpustakaan UMS
 https://library.ums.ac.id`;
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(directClaimUrl);
-    setCopiedType('link');
-    if (onShowToast) onShowToast('Tautan akses langsung berhasil disalin!', 'success');
-    setTimeout(() => setCopiedType(null), 2000);
+  const handleCopyLink = async () => {
+    const ok = await copyToClipboard(directClaimUrl);
+    if (ok) {
+      setCopiedType('link');
+      if (onShowToast) onShowToast('Tautan akses langsung berhasil disalin!', 'success');
+      setTimeout(() => setCopiedType(null), 2000);
+    }
   };
 
-  const handleCopyWaText = () => {
-    navigator.clipboard.writeText(waMessage);
-    setCopiedType('wa');
-    if (onShowToast) onShowToast('Format pesan WhatsApp berhasil disalin!', 'success');
-    setTimeout(() => setCopiedType(null), 2000);
+  const handleCopyWaText = async () => {
+    const ok = await copyToClipboard(waMessage);
+    if (ok) {
+      setCopiedType('wa');
+      if (onShowToast) onShowToast('Format pesan WhatsApp berhasil disalin!', 'success');
+      setTimeout(() => setCopiedType(null), 2000);
+    }
   };
 
   const handleOpenWhatsApp = () => {

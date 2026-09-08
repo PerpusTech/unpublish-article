@@ -25,23 +25,37 @@
 
 :root {
   /* Clean Pure White & Deep Academic Navy */
-  --color-primary: #0a2540;        /* Deep Academic Navy (UMS) */
-  --color-primary-hover: #061729;  /* Midnight Navy */
-  --color-primary-light: #f0f4f9;  /* Subtle Navy Wash */
-  --color-accent: #925712;         /* Warm Antique Brass / Amber */
-  --color-accent-light: #fdf8ee;   /* Warm Amber Wash */
-  --color-accent-border: #ebd3ab;  /* Soft Amber Border */
-  
-  --color-bg: #ffffff;             /* Pure White Background */
-  --color-surface: #ffffff;        /* Surface Sheet */
-  --color-surface-subtle: #f8fafc; /* Crisp Light Neutral */
-  --color-surface-hover: #f1f5f9;
-  --color-border: #e2e8f0;         /* Refined Light Gray Border */
-  --color-border-dark: #cbd5e1;    /* Stronger Border */
+  --color-primary: #0a2540;
+  /* Deep Academic Navy (UMS) */
+  --color-primary-hover: #061729;
+  /* Midnight Navy */
+  --color-primary-light: #f0f4f9;
+  /* Subtle Navy Wash */
+  --color-accent: #925712;
+  /* Warm Antique Brass / Amber */
+  --color-accent-light: #fdf8ee;
+  /* Warm Amber Wash */
+  --color-accent-border: #ebd3ab;
+  /* Soft Amber Border */
 
-  --color-text: #0f172a;           /* Deep Slate Charcoal */
-  --color-text-muted: #475569;     /* Slate Muted */
-  --color-text-light: #64748b;     /* Slate Light */
+  --color-bg: #ffffff;
+  /* Pure White Background */
+  --color-surface: #ffffff;
+  /* Surface Sheet */
+  --color-surface-subtle: #f8fafc;
+  /* Crisp Light Neutral */
+  --color-surface-hover: #f1f5f9;
+  --color-border: #e2e8f0;
+  /* Refined Light Gray Border */
+  --color-border-dark: #cbd5e1;
+  /* Stronger Border */
+
+  --color-text: #0f172a;
+  /* Deep Slate Charcoal */
+  --color-text-muted: #475569;
+  /* Slate Muted */
+  --color-text-light: #64748b;
+  /* Slate Light */
   --color-text-white: #ffffff;
 
   --color-success: #065f46;
@@ -71,22 +85,29 @@
 
 /* Dark Mode Theme Tokens */
 [data-theme="dark"] {
-  --color-primary: #3b82f6;        /* Bright Academic Blue */
+  --color-primary: #3b82f6;
+  /* Bright Academic Blue */
   --color-primary-hover: #60a5fa;
   --color-primary-light: #1e293b;
   --color-accent: #f59e0b;
   --color-accent-light: #2c2010;
   --color-accent-border: #78350f;
-  
-  --color-bg: #090d16;             /* Deep Rich Dark */
-  --color-surface: #111827;        /* Elevated Dark Panel */
-  --color-surface-subtle: #1a2234; /* Dark Accent Panel */
+
+  --color-bg: #090d16;
+  /* Deep Rich Dark */
+  --color-surface: #111827;
+  /* Elevated Dark Panel */
+  --color-surface-subtle: #1a2234;
+  /* Dark Accent Panel */
   --color-surface-hover: #1f293d;
-  --color-border: #1f293d;         /* Subtle Dark Border */
+  --color-border: #1f293d;
+  /* Subtle Dark Border */
   --color-border-dark: #374151;
 
-  --color-text: #f8fafc;           /* Crisp White Text */
-  --color-text-muted: #94a3b8;     /* Soft Light Gray */
+  --color-text: #f8fafc;
+  /* Crisp White Text */
+  --color-text-muted: #94a3b8;
+  /* Soft Light Gray */
   --color-text-light: #64748b;
   --color-text-white: #ffffff;
 
@@ -272,7 +293,12 @@ textarea {
 }
 
 /* Headings, Brand, Action Buttons, Badges, Tabs, and Stat Numbers use MANROPE */
-h1, h2, h3, h4, h5, h6,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
 button,
 .btn,
 .pill-btn,
@@ -291,7 +317,12 @@ th,
   font-family: var(--font-heading);
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   letter-spacing: -0.015em;
   color: var(--color-text);
 }
@@ -340,6 +371,7 @@ a:hover {
     opacity: 0;
     transform: translateY(8px);
   }
+
   100% {
     opacity: 1;
     transform: none;
@@ -451,8 +483,15 @@ a:hover {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.65; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.65;
+  }
 }
 
 .timer-countdown {
@@ -468,9 +507,9 @@ a:hover {
 .tab-btn,
 .theme-toggle-btn {
   transition: transform 0.12s cubic-bezier(0.16, 1, 0.3, 1),
-              background-color 0.15s ease,
-              border-color 0.15s ease,
-              box-shadow 0.15s ease;
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
   user-select: none;
 }
 
@@ -575,7 +614,9 @@ a:hover {
   color: var(--color-text);
 }
 
-.form-input, .form-select, .form-textarea {
+.form-input,
+.form-select,
+.form-textarea {
   width: 100%;
   padding: 9px 13px;
   font-size: 14px;
@@ -587,7 +628,9 @@ a:hover {
   transition: border-color 0.15s, box-shadow 0.15s, background-color 0.2s;
 }
 
-.form-input:focus, .form-select:focus, .form-textarea:focus {
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
   outline: none;
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
@@ -662,9 +705,9 @@ a:hover {
   margin-bottom: 18px;
   box-shadow: var(--shadow-sm);
   transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.18s ease,
-              border-color 0.18s ease,
-              background-color 0.25s ease;
+    box-shadow 0.18s ease,
+    border-color 0.18s ease,
+    background-color 0.25s ease;
   position: relative;
 }
 
@@ -1082,9 +1125,9 @@ a:hover {
   -webkit-backdrop-filter: blur(12px);
   cursor: pointer;
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.2s ease,
-              border-color 0.2s ease,
-              background-color 0.2s ease;
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease;
 }
 
 .theme-toggle-btn:hover {
@@ -1102,6 +1145,7 @@ a:hover {
     bottom: 16px;
     right: 16px;
   }
+
   .theme-toggle-btn {
     width: 42px;
     height: 42px;
@@ -1113,9 +1157,12 @@ a:hover {
   body * {
     visibility: hidden;
   }
-  .printable-slip, .printable-slip * {
+
+  .printable-slip,
+  .printable-slip * {
     visibility: visible;
   }
+
   .printable-slip {
     position: absolute;
     left: 0;
@@ -1134,6 +1181,7 @@ a:hover {
     opacity: 0;
     backdrop-filter: blur(0px);
   }
+
   to {
     opacity: 1;
     backdrop-filter: blur(4px);
@@ -1145,6 +1193,7 @@ a:hover {
     opacity: 0;
     transform: scale(0.92) translateY(12px);
   }
+
   100% {
     opacity: 1;
     transform: scale(1) translateY(0);
@@ -1156,6 +1205,7 @@ a:hover {
     opacity: 0;
     transform: translateY(8px);
   }
+
   100% {
     opacity: 1;
     transform: translateY(0);
@@ -1167,9 +1217,11 @@ a:hover {
     opacity: 0;
     transform: translate(-50%, 24px) scale(0.92);
   }
+
   70% {
     transform: translate(-50%, -2px) scale(1.02);
   }
+
   100% {
     opacity: 1;
     transform: translate(-50%, 0) scale(1);
@@ -1248,8 +1300,8 @@ a:hover {
 /* SSO Button Glow */
 .btn-sso-animated {
   transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.18s ease,
-              background-color 0.18s ease;
+    box-shadow 0.18s ease,
+    background-color 0.18s ease;
 }
 
 .btn-sso-animated:hover {
@@ -1268,18 +1320,17 @@ a:hover {
   0% {
     background-position: -200% 0;
   }
+
   100% {
     background-position: 200% 0;
   }
 }
 
 .skeleton-shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--color-surface-subtle) 25%,
-    var(--color-surface-hover) 50%,
-    var(--color-surface-subtle) 75%
-  );
+  background: linear-gradient(90deg,
+      var(--color-surface-subtle) 25%,
+      var(--color-surface-hover) 50%,
+      var(--color-surface-subtle) 75%);
   background-size: 200% 100%;
   animation: shimmerPulse 1.6s infinite ease-in-out;
   border-radius: var(--radius-sm);
@@ -1307,8 +1358,8 @@ a:hover {
   margin-bottom: 20px;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02);
   transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.22s ease,
-              border-color 0.22s ease;
+    box-shadow 0.22s ease,
+    border-color 0.22s ease;
   position: relative;
   overflow: hidden;
 }
@@ -1546,8 +1597,8 @@ a:hover {
   position: relative;
   overflow: hidden;
   transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.18s ease,
-              border-color 0.18s ease;
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
 }
 
 .admin-metric-card:hover {
@@ -1730,9 +1781,12 @@ a:hover {
   body * {
     visibility: hidden;
   }
-  .printable-slip, .printable-slip * {
+
+  .printable-slip,
+  .printable-slip * {
     visibility: visible;
   }
+
   .printable-slip {
     position: absolute;
     left: 0;
@@ -1743,7 +1797,10 @@ a:hover {
     box-shadow: none;
     border: none !important;
   }
-  .modal-backdrop, .modal-footer, .btn {
+
+  .modal-backdrop,
+  .modal-footer,
+  .btn {
     display: none !important;
   }
 }
@@ -1891,6 +1948,7 @@ a:hover {
 }
 
 @media print {
+
   /* Hide all app contents, background overlays, headers, and UI modals during print */
   body * {
     visibility: hidden !important;
@@ -1964,7 +2022,7 @@ a:hover {
   .content-wrapper {
     padding: 20px 18px;
   }
-  
+
   .stat-card-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 14px;
@@ -2042,7 +2100,7 @@ a:hover {
     gap: 10px;
   }
 
-  .search-row > * {
+  .search-row>* {
     width: 100%;
   }
 
@@ -2308,6 +2366,7 @@ a:hover {
     border-color: rgba(239, 68, 68, 0.4);
     box-shadow: 0 4px 16px rgba(239, 68, 68, 0.15);
   }
+
   100% {
     border-color: rgba(239, 68, 68, 0.85);
     box-shadow: 0 6px 28px rgba(239, 68, 68, 0.3);
@@ -2340,6 +2399,7 @@ a:hover {
     transform: scale(0.8);
     opacity: 1;
   }
+
   100% {
     transform: scale(2.4);
     opacity: 0;
@@ -2415,5 +2475,3 @@ a:hover {
   border-color: var(--color-primary);
   color: var(--color-primary);
 }
-
-

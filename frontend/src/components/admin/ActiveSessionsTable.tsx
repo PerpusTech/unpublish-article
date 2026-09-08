@@ -4,6 +4,7 @@ import { api, TokenAdminItem } from '../../services/api';
 import { PaginationControls } from '../common/PaginationControls';
 import { ShareTokenModal } from './ShareTokenModal';
 import { ThermalSlipModal, ThermalSlipItem } from './ThermalSlipModal';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface ActiveSessionsTableProps {
   tokens?: TokenAdminItem[];
@@ -55,8 +56,9 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
   };
 
   const handlePrintPageThermal = () => {
-    if (tokens.length === 0) return;
-    const items: ThermalSlipItem[] = tokens.map((t: TokenAdminItem) => ({
+    const list = Array.isArray(tokens) ? tokens : [];
+    if (list.length === 0) return;
+    const items: ThermalSlipItem[] = list.map((t: TokenAdminItem) => ({
       token: t,
       qrDataUrl: getQrUrl(t.token_code),
     }));
@@ -134,10 +136,12 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
     fetchTokensData(1, newSize);
   };
 
-  const handleCopyToken = (code: string, id: string) => {
-    navigator.clipboard.writeText(code);
-    setCopiedTokenId(id);
-    setTimeout(() => setCopiedTokenId(null), 2000);
+  const handleCopyToken = async (code: string, id: string) => {
+    const ok = await copyToClipboard(code);
+    if (ok) {
+      setCopiedTokenId(id);
+      setTimeout(() => setCopiedTokenId(null), 2000);
+    }
   };
 
   const handleExtend = async (id: string, minutes: number, patronName: string) => {
@@ -442,7 +446,7 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
                 </td>
               </tr>
             ) : (
-              tokens.map((token) => {
+              (Array.isArray(tokens) ? tokens : []).map((token) => {
                 const hasIncident = Boolean(token.incident_count && token.incident_count > 0);
 
                 const formatIncidentShort = (tStr?: string) => {

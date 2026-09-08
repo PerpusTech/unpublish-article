@@ -530,7 +530,7 @@ export const api = {
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error?.message || 'Gagal memuat data analitik');
-    return json;
+    return json.data || json;
   },
 
   // === Security Incident Telemetry & Live Alerts ===

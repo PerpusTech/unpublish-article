@@ -256,43 +256,59 @@ export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({
             )}
           </div>
 
-          {/* Creators / Authors */}
-          <div style={{ marginBottom: 18 }}>
-            <h4 style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.6px', textTransform: 'uppercase', color: 'var(--color-text-light)', marginBottom: 8 }}>
-              Kreator & Peneliti
-            </h4>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {currentArticle.creators && currentArticle.creators.length > 0 ? (
-                currentArticle.creators.map((author, idx) => (
-                  <span key={idx} className="author-chip" style={{ fontSize: 12.5, padding: '4px 12px' }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                      <circle cx="12" cy="7" r="4" />
-                    </svg>
-                    <span>{author}</span>
-                    {idx === 0 && (currentArticle.id_number || currentArticle.nim) && (
-                      <span className="author-id-number" title="Nomor Identifikasi / NIM Penulis">
-                        {currentArticle.id_number || currentArticle.nim}
+            {/* Creators / Authors */}
+            <div style={{ marginBottom: 18 }}>
+              <h4 style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.6px', textTransform: 'uppercase', color: 'var(--color-text-light)', marginBottom: 8 }}>
+                Kreator & Peneliti
+              </h4>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {(() => {
+                  const authors: string[] = (() => {
+                    if (Array.isArray(currentArticle.creators)) {
+                      return currentArticle.creators
+                        .map((c) => (typeof c === 'string' ? c : (c as any)?.name ? `${(c as any).name.family || ''} ${(c as any).name.given || ''}`.trim() : String(c)))
+                        .filter(Boolean);
+                    }
+                    if (typeof currentArticle.creators === 'string') {
+                      return (currentArticle.creators as string).split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+                    }
+                    return [];
+                  })();
+
+                  if (authors.length > 0) {
+                    return authors.map((author, idx) => (
+                      <span key={idx} className="author-chip" style={{ fontSize: 12.5, padding: '4px 12px' }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                          <circle cx="12" cy="7" r="4" />
+                        </svg>
+                        <span>{author}</span>
+                        {idx === 0 && (currentArticle.id_number || currentArticle.nim) && (
+                          <span className="author-id-number" title="Nomor Identifikasi / NIM Penulis">
+                            {currentArticle.id_number || currentArticle.nim}
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </span>
-                ))
-              ) : (
-                <span className="author-chip" style={{ fontSize: 12.5, padding: '4px 12px' }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                    <circle cx="12" cy="7" r="4" />
-                  </svg>
-                  <span>Civitas Akademika UMS</span>
-                  {(currentArticle.id_number || currentArticle.nim) && (
-                    <span className="author-id-number" title="Nomor Identifikasi / NIM">
-                      {currentArticle.id_number || currentArticle.nim}
+                    ));
+                  }
+
+                  return (
+                    <span className="author-chip" style={{ fontSize: 12.5, padding: '4px 12px' }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                        <circle cx="12" cy="7" r="4" />
+                      </svg>
+                      <span>Civitas Akademika UMS</span>
+                      {(currentArticle.id_number || currentArticle.nim) && (
+                        <span className="author-id-number" title="Nomor Identifikasi / NIM">
+                          {currentArticle.id_number || currentArticle.nim}
+                        </span>
+                      )}
                     </span>
-                  )}
-                </span>
-              )}
+                  );
+                })()}
+              </div>
             </div>
-          </div>
 
           {/* Department / Faculty */}
           {currentArticle.department && (

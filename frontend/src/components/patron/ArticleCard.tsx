@@ -85,42 +85,54 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect, onO
 
       {/* Authors & Department */}
       <div className="author-chip-list">
-        {article.creators && article.creators.length > 0 ? (
-          article.creators.slice(0, 3).map((author, idx) => (
-            <span key={idx} className="author-chip">
+        {(() => {
+          const authors = Array.isArray(article.creators)
+            ? article.creators.map((c) => (typeof c === 'string' ? c : (c as any)?.name ? `${(c as any).name.family || ''} ${(c as any).name.given || ''}`.trim() : String(c))).filter(Boolean)
+            : typeof article.creators === 'string'
+            ? (article.creators as string).split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean)
+            : [];
+
+          if (authors.length > 0) {
+            return (
+              <>
+                {authors.slice(0, 3).map((author, idx) => (
+                  <span key={idx} className="author-chip">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                    <span>{author}</span>
+                    {idx === 0 && (article.id_number || article.nim) && (
+                      <span className="author-id-number" title="Nomor Identifikasi / NIM Penulis">
+                        {article.id_number || article.nim}
+                      </span>
+                    )}
+                  </span>
+                ))}
+                {authors.length > 3 && (
+                  <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)', fontWeight: 600 }}>
+                    +{authors.length - 3} lainnya
+                  </span>
+                )}
+              </>
+            );
+          }
+
+          return (
+            <span className="author-chip">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                 <circle cx="12" cy="7" r="4" />
               </svg>
-              <span>{author}</span>
-              {idx === 0 && (article.id_number || article.nim) && (
-                <span className="author-id-number" title="Nomor Identifikasi / NIM Penulis">
+              <span>Peneliti Civitas UMS</span>
+              {(article.id_number || article.nim) && (
+                <span className="author-id-number" title="Nomor Identifikasi / NIM">
                   {article.id_number || article.nim}
                 </span>
               )}
             </span>
-          ))
-        ) : (
-          <span className="author-chip">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-            <span>Peneliti Civitas UMS</span>
-            {(article.id_number || article.nim) && (
-              <span className="author-id-number" title="Nomor Identifikasi / NIM">
-                {article.id_number || article.nim}
-              </span>
-            )}
-          </span>
-        )}
-
-        {article.creators && article.creators.length > 3 && (
-          <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)', fontWeight: 600 }}>
-            +{article.creators.length - 3} lainnya
-          </span>
-        )}
-
+          );
+        })()}
         {article.department && (
           <span className="department-tag">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

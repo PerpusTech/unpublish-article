@@ -30,7 +30,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
   const [isWindowFocused, setIsWindowFocused] = useState<boolean>(true);
   const [screenshotWarning, setScreenshotWarning] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<string>(() => new Date().toLocaleString('id-ID'));
-  
+
   // Current article details (to list all documents attached to this article)
   const [currentArticleDetail, setCurrentArticleDetail] = useState<ArticleItem | null>(null);
   const [loadingArticleDetail, setLoadingArticleDetail] = useState<boolean>(false);
@@ -39,7 +39,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
   const [secondaryDoc, setSecondaryDoc] = useState<SecondaryDocumentInfo | null>(null);
   const [isDocPickerOpen, setIsDocPickerOpen] = useState<boolean>(false);
   const [docPickerTab, setDocPickerTab] = useState<'article_docs' | 'recent_reads' | 'catalog_search'>('article_docs');
-  
+
   // Catalog search state inside Document Picker
   const [searchCatalogQuery, setSearchCatalogQuery] = useState<string>('');
   const [searchCatalogResults, setSearchCatalogResults] = useState<ArticleItem[]>([]);
@@ -58,7 +58,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     try {
       const saved = localStorage.getItem('ums_patron_session');
       if (saved) currentSession = JSON.parse(saved);
-    } catch {}
+    } catch { }
   }
 
   const effectiveTokenId = currentSession?.id || localStorage.getItem('ums_patron_token_id') || undefined;
@@ -111,7 +111,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       if (raw) {
         setRecentReadsList(JSON.parse(raw));
       }
-    } catch {}
+    } catch { }
   }, [isDocPickerOpen]);
 
   // Search catalog handler for right pane picker
@@ -171,10 +171,10 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       if (!isFs) {
         if (container?.requestFullscreen) {
           container.requestFullscreen().catch(() => {
-            if (docEl.requestFullscreen) docEl.requestFullscreen().catch(() => {});
+            if (docEl.requestFullscreen) docEl.requestFullscreen().catch(() => { });
           });
         } else if (docEl.requestFullscreen) {
-          docEl.requestFullscreen().catch(() => {});
+          docEl.requestFullscreen().catch(() => { });
         } else if (container?.webkitRequestFullscreen) {
           container.webkitRequestFullscreen();
         } else if (docEl.webkitRequestFullscreen) {
@@ -190,7 +190,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
         }
       } else {
         if (document.exitFullscreen) {
-          document.exitFullscreen().catch(() => {});
+          document.exitFullscreen().catch(() => { });
         } else if (doc.webkitExitFullscreen) {
           doc.webkitExitFullscreen();
         } else if (doc.mozCancelFullScreen) {
@@ -273,10 +273,10 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     const triggerProtection = (msg: string, violationAction: string = 'SECURITY_VIOLATION') => {
       // Clear clipboard to neutralize potential screen grabs
       try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText('Perpustakaan UMS — Perlindungan Hak Cipta Naskah Unpublish.');
+        if (typeof navigator !== 'undefined' && navigator?.clipboard?.writeText) {
+          navigator.clipboard.writeText('Perpustakaan UMS — Perlindungan Hak Cipta Naskah Unpublish.').catch(() => {});
         }
-      } catch {}
+      } catch { }
 
       // Send live incident telemetry to backend for Librarian Live Alert
       api.reportSecurityIncident({
@@ -284,7 +284,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
         articleId,
         docId,
         articleTitle,
-      }).catch(() => {});
+      }).catch(() => { });
 
       // Temporarily blank/blur screen
       setIsWindowFocused(false);
@@ -382,7 +382,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
           onClose();
           window.location.reload();
         }
-      } catch {}
+      } catch { }
     };
 
     const interval = setInterval(checkStatus, 3000);

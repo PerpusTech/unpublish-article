@@ -253,14 +253,14 @@ export const AuditLogTable: React.FC = () => {
                   <div>Memuat data log audit...</div>
                 </td>
               </tr>
-            ) : logs.length === 0 ? (
+            ) : !Array.isArray(logs) || logs.length === 0 ? (
               <tr>
                 <td colSpan={6} style={{ textAlign: 'center', padding: 30, color: 'var(--color-text-muted)' }}>
                   Tidak ada catatan aktivitas yang cocok.
                 </td>
               </tr>
             ) : (
-              logs.map((log) => (
+              (logs || []).map((log) => (
                 <tr key={log.id}>
                   <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: 'var(--color-text-muted)' }}>
                     {formatDate(log.created_at)}

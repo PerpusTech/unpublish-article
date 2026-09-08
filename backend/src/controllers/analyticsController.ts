@@ -36,7 +36,7 @@ export class AnalyticsController {
       const revokedTokensRow: any = await query.get("SELECT COUNT(*) as count FROM tokens WHERE status = 'REVOKED'");
       const expiredTokensRow: any = await query.get("SELECT COUNT(*) as count FROM tokens WHERE status = 'EXPIRED'");
 
-      const totalViewsRow: any = await query.get("SELECT COUNT(*) as count FROM audit_logs WHERE action = 'VIEW_DOCUMENT'");
+      const totalViewsRow: any = await query.get("SELECT COUNT(*) as count FROM audit_logs WHERE action IN ('VIEW_PDF', 'VIEW_DOCUMENT')");
       const uniquePatronsRow: any = await query.get('SELECT COUNT(DISTINCT patron_nim) as count FROM audit_logs');
       const avgDurationRow: any = await query.get('SELECT AVG(duration_minutes + extended_minutes) as avgDuration FROM tokens');
 
@@ -48,7 +48,7 @@ export class AnalyticsController {
           COUNT(*) as view_count,
           COUNT(DISTINCT patron_nim) as unique_readers
         FROM audit_logs
-        WHERE action = 'VIEW_DOCUMENT' AND eprint_id IS NOT NULL AND article_title IS NOT NULL
+        WHERE action IN ('VIEW_PDF', 'VIEW_DOCUMENT') AND eprint_id IS NOT NULL AND article_title IS NOT NULL
         GROUP BY eprint_id, article_title
         ORDER BY view_count DESC
         LIMIT 10
@@ -60,7 +60,7 @@ export class AnalyticsController {
           patron_nim,
           patron_name,
           COUNT(*) as total_actions,
-          SUM(CASE WHEN action = 'VIEW_DOCUMENT' THEN 1 ELSE 0 END) as document_views,
+          SUM(CASE WHEN action IN ('VIEW_PDF', 'VIEW_DOCUMENT') THEN 1 ELSE 0 END) as document_views,
           COUNT(DISTINCT token_id) as tokens_used,
           MAX(created_at) as last_activity
         FROM audit_logs
@@ -93,7 +93,7 @@ export class AnalyticsController {
         SELECT 
           strftime('%H', created_at) as hour,
           COUNT(*) as count,
-          SUM(CASE WHEN action = 'VIEW_DOCUMENT' THEN 1 ELSE 0 END) as view_count
+          SUM(CASE WHEN action IN ('VIEW_PDF', 'VIEW_DOCUMENT') THEN 1 ELSE 0 END) as view_count
         FROM audit_logs
         GROUP BY hour
         ORDER BY hour ASC
@@ -118,7 +118,7 @@ export class AnalyticsController {
         SELECT 
           date(created_at) as date,
           COUNT(*) as total_events,
-          SUM(CASE WHEN action = 'VIEW_DOCUMENT' THEN 1 ELSE 0 END) as document_views,
+          SUM(CASE WHEN action IN ('VIEW_PDF', 'VIEW_DOCUMENT') THEN 1 ELSE 0 END) as document_views,
           COUNT(DISTINCT patron_nim) as active_readers
         FROM audit_logs
         WHERE created_at >= date('now', '-14 days')

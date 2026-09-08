@@ -6,6 +6,7 @@ import { ArticleDetailModal } from '../components/patron/ArticleDetailModal';
 import { PDFCanvasViewer } from '../components/pdf/PDFCanvasViewer';
 import { BrowseItemsModal, BrowseCategory } from '../components/patron/BrowseItemsModal';
 import { PaginationControls } from '../components/common/PaginationControls';
+import { copyToClipboard } from '../utils/clipboard';
 
 export interface RecentReadItem {
   eprintid: number;
@@ -175,11 +176,13 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
     loadArticles(1, newSize);
   };
 
-  const handleCopyToken = () => {
+  const handleCopyToken = async () => {
     if (!session?.token_code) return;
-    navigator.clipboard.writeText(session.token_code);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2500);
+    const ok = await copyToClipboard(session.token_code);
+    if (ok) {
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2500);
+    }
   };
 
   const handleOpenPdf = (articleId: number, docId: number, title: string) => {

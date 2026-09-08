@@ -15,7 +15,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onShowTo
     setError(null);
     try {
       const res = await api.getAnalytics();
-      setData(res);
+      const analyticsData = (res as any)?.data || res;
+      setData(analyticsData);
     } catch (err: any) {
       setError(err.message || 'Gagal memuat data analitik.');
       if (onShowToast) onShowToast('Gagal memuat data analitik repositori.', 'danger');
@@ -53,16 +54,36 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onShowTo
     );
   }
 
-  const { kpis, topArticles, topPatrons, facultyDistribution, hourlyActivity, tokenStatusBreakdown } = data;
+  const {
+    kpis = {
+      totalTokens: 0,
+      activeTokens: 0,
+      pendingTokens: 0,
+      revokedTokens: 0,
+      totalDocumentViews: 0,
+      uniquePatrons: 0,
+      averageDurationMinutes: 0,
+    },
+    topArticles = [],
+    topPatrons = [],
+    facultyDistribution = [],
+    hourlyActivity = [],
+    tokenStatusBreakdown = { ACTIVE: 0, PENDING: 0, EXPIRED: 0, REVOKED: 0 },
+  } = data || {};
+
+  const safeHourlyActivity = Array.isArray(hourlyActivity) ? hourlyActivity : [];
+  const safeFacultyDist = Array.isArray(facultyDistribution) ? facultyDistribution : [];
+  const safeTopPatrons = Array.isArray(topPatrons) ? topPatrons : [];
+  const safeTopArticles = Array.isArray(topArticles) ? topArticles : [];
 
   // Max calculations for relative chart scaling
-  const maxHourlyView = Math.max(...hourlyActivity.map((h) => h.view_count), 1);
-  const totalFacultyPatrons = facultyDistribution.reduce((acc, curr) => acc + curr.patron_count, 0) || 1;
+  const maxHourlyView = Math.max(...(safeHourlyActivity.length > 0 ? safeHourlyActivity.map((h) => h?.view_count || 0) : [0]), 1);
+  const totalFacultyPatrons = safeFacultyDist.reduce((acc, curr) => acc + (curr?.patron_count || 0), 0) || 1;
   const totalTokenBreakdown =
-    tokenStatusBreakdown.ACTIVE +
-      tokenStatusBreakdown.PENDING +
-      tokenStatusBreakdown.EXPIRED +
-      tokenStatusBreakdown.REVOKED || 1;
+    (tokenStatusBreakdown?.ACTIVE || 0) +
+    (tokenStatusBreakdown?.PENDING || 0) +
+    (tokenStatusBreakdown?.EXPIRED || 0) +
+    (tokenStatusBreakdown?.REVOKED || 0) || 1;
 
   return (
     <div className="animated-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -215,12 +236,12 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onShowTo
               paddingBottom: 6,
             }}
           >
-            {hourlyActivity.map((h) => {
-              const heightPercent = Math.max(4, Math.round((h.view_count / maxHourlyView) * 100));
-              const isPeak = h.view_count === maxHourlyView && h.view_count > 0;
+            {safeHourlyActivity.map((h) => {
+              const heightPercent = Math.max(4, Math.round(((h?.view_count || 0) / maxHourlyView) * 100));
+              const isPeak = h?.view_count === maxHourlyView && (h?.view_count || 0) > 0;
               return (
                 <div
-                  key={h.hour}
+                  key={h?.hour || Math.random()}
                   style={{
                     flex: 1,
                     display: 'flex',
@@ -229,7 +250,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onShowTo
                     height: '100%',
                     justifyContent: 'flex-end',
                   }}
-                  title={`${h.label}: ${h.view_count} kali pembacaan dokumen`}
+                  title={`${h?.label || ''}: ${h?.view_count || 0} kali pembacaan dokumen`}
                 >
                   <div
                     style={{
@@ -238,11 +259,11 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onShowTo
                       backgroundColor: isPeak ? 'var(--color-accent)' : 'var(--color-primary)',
                       borderRadius: '3px 3px 0 0',
                       transition: 'height 0.3s ease',
-                      opacity: h.view_count > 0 ? 0.9 : 0.2,
+                      opacity: (h?.view_count || 0) > 0 ? 0.9 : 0.2,
                     }}
                   />
                   <span style={{ fontSize: 9, color: 'var(--color-text-light)', marginTop: 4 }}>
-                    {parseInt(h.hour, 10) % 3 === 0 ? parseInt(h.hour, 10) : ''}
+                    {parseInt(h?.hour || '0', 10) % 3 === 0 ? parseInt(h?.hour || '0', 10) : ''}
                   </span>
                 </div>
               );
@@ -255,78 +276,51 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onShowTo
           </div>
         </div>
 
-        {/* Token Status & Distribution */}
+        {/* Token Status Breakdown Donut/Bars */}
         <div className="card" style={{ margin: 0 }}>
           <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15 }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-accent)' }}>
-              <path d="M21.21 15.89A10 10 0 1 1 8 2.83" />
-              <path d="M22 12A10 10 0 0 0 12 2v10z" />
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-primary)' }}>
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 2a10 10 0 0 1 10 10" />
             </svg>
-            Proporsi Status Tiket Pemustaka
+            Status Tiket Pemustaka
           </h3>
-          <p style={{ fontSize: 12.5, color: 'var(--color-text-muted)', marginBottom: 18 }}>
-            Komposisi status tiket yang diterbitkan di meja layanan perpustakaan
+          <p style={{ fontSize: 12.5, color: 'var(--color-text-muted)', marginBottom: 16 }}>
+            Distribusi peruntukan dan status terkini seluruh token akses
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
-                  <strong>Selesai & Kedaluwarsa Normal (Expired)</strong>
-                </span>
-                <span>{tokenStatusBreakdown.EXPIRED} tiket ({Math.round((tokenStatusBreakdown.EXPIRED / totalTokenBreakdown) * 100)}%)</span>
-              </div>
-              <div style={{ height: 8, backgroundColor: 'var(--color-surface-subtle)', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ width: `${Math.round((tokenStatusBreakdown.EXPIRED / totalTokenBreakdown) * 100)}%`, height: '100%', backgroundColor: '#10b981' }} />
-              </div>
-            </div>
-
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#3b82f6', display: 'inline-block' }} />
-                  <strong>Sedang Aktif Membaca (Active)</strong>
-                </span>
-                <span>{tokenStatusBreakdown.ACTIVE} tiket ({Math.round((tokenStatusBreakdown.ACTIVE / totalTokenBreakdown) * 100)}%)</span>
-              </div>
-              <div style={{ height: 8, backgroundColor: 'var(--color-surface-subtle)', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ width: `${Math.round((tokenStatusBreakdown.ACTIVE / totalTokenBreakdown) * 100)}%`, height: '100%', backgroundColor: '#3b82f6' }} />
-              </div>
-            </div>
-
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#f59e0b', display: 'inline-block' }} />
-                  <strong>Menunggu Aktivasi (Pending)</strong>
-                </span>
-                <span>{tokenStatusBreakdown.PENDING} tiket ({Math.round((tokenStatusBreakdown.PENDING / totalTokenBreakdown) * 100)}%)</span>
-              </div>
-              <div style={{ height: 8, backgroundColor: 'var(--color-surface-subtle)', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ width: `${Math.round((tokenStatusBreakdown.PENDING / totalTokenBreakdown) * 100)}%`, height: '100%', backgroundColor: '#f59e0b' }} />
-              </div>
-            </div>
-
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#ef4444', display: 'inline-block' }} />
-                  <strong>Dicabut Pustakawan (Revoked)</strong>
-                </span>
-                <span>{tokenStatusBreakdown.REVOKED} tiket ({Math.round((tokenStatusBreakdown.REVOKED / totalTokenBreakdown) * 100)}%)</span>
-              </div>
-              <div style={{ height: 8, backgroundColor: 'var(--color-surface-subtle)', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ width: `${Math.round((tokenStatusBreakdown.REVOKED / totalTokenBreakdown) * 100)}%`, height: '100%', backgroundColor: '#ef4444' }} />
-              </div>
-            </div>
+            {[
+              { label: 'Aktif Digunakan', count: tokenStatusBreakdown.ACTIVE, color: '#10b981', desc: 'Sesi baca sedang berlangsung' },
+              { label: 'Menunggu Login', count: tokenStatusBreakdown.PENDING, color: '#3b82f6', desc: 'Belum dipakai login pemustaka' },
+              { label: 'Kedaluwarsa', count: tokenStatusBreakdown.EXPIRED, color: '#94a3b8', desc: 'Durasi waktu tiket telah habis' },
+              { label: 'Dicabut Admin', count: tokenStatusBreakdown.REVOKED, color: '#ef4448', desc: 'Tiket dibatalkan oleh petugas' },
+            ].map((st) => {
+              const pct = Math.round((st.count / totalTokenBreakdown) * 100);
+              return (
+                <div key={st.label}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>
+                    <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: st.color, display: 'inline-block' }} />
+                      {st.label}
+                    </span>
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
+                      <strong>{st.count}</strong> ({pct}%)
+                    </span>
+                  </div>
+                  <div style={{ height: 6, backgroundColor: 'var(--color-surface-subtle)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', backgroundColor: st.color, transition: 'width 0.3s ease' }} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
 
-      {/* Faculty Distribution & Most Active Patrons */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: 20 }}>
-        {/* Faculty Distribution */}
+      {/* Grid 2: Faculty Distribution & Top Patrons */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 20 }}>
+        {/* Faculty Breakdown */}
         <div className="card" style={{ margin: 0 }}>
           <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-primary)' }}>
@@ -339,25 +333,25 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onShowTo
             Fakultas yang paling aktif mengakses naskah repositori unpublish
           </p>
 
-          {facultyDistribution.length === 0 ? (
+          {safeFacultyDist.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
               Belum ada data aktivitas pemustaka yang tercatat.
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {facultyDistribution.map((item) => {
-                const percent = Math.round((item.patron_count / totalFacultyPatrons) * 100);
+              {safeFacultyDist.map((item) => {
+                const percent = Math.round(((item?.patron_count || 0) / totalFacultyPatrons) * 100);
                 return (
-                  <div key={item.prefix} style={{ borderBottom: '1px solid var(--color-surface-subtle)', paddingBottom: 8 }}>
+                  <div key={item?.prefix || Math.random()} style={{ borderBottom: '1px solid var(--color-surface-subtle)', paddingBottom: 8 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span className="brand-logo-badge" style={{ fontSize: 9.5, padding: '1px 5px' }}>
-                          NIM {item.prefix}
+                          NIM {item?.prefix || '-'}
                         </span>
-                        <strong>{item.faculty}</strong>
+                        <strong>{item?.faculty || 'Umum / Lainnya'}</strong>
                       </span>
                       <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-                        <strong>{item.patron_count}</strong> pemustaka ({percent}%) • <strong>{item.activity_count}</strong> aksi
+                        <strong>{item?.patron_count || 0}</strong> pemustaka ({percent}%) • <strong>{item?.activity_count || 0}</strong> aksi
                       </span>
                     </div>
                     <div style={{ height: 6, backgroundColor: 'var(--color-surface-subtle)', borderRadius: 3, overflow: 'hidden' }}>
@@ -382,7 +376,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onShowTo
             Pemustaka dengan frekuensi pembacaan naskah tertinggi
           </p>
 
-          {topPatrons.length === 0 ? (
+          {safeTopPatrons.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
               Belum ada data pemustaka yang tercatat.
             </div>
@@ -398,21 +392,21 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onShowTo
                   </tr>
                 </thead>
                 <tbody>
-                  {topPatrons.map((p, idx) => (
-                    <tr key={p.patron_nim}>
+                  {safeTopPatrons.map((p, idx) => (
+                    <tr key={p?.patron_nim || idx}>
                       <td style={{ fontWeight: 700, color: idx < 3 ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
                         #{idx + 1}
                       </td>
                       <td>
-                        <strong>{p.patron_name}</strong>
-                        <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>NIM: {p.patron_nim}</div>
+                        <strong>{p?.patron_name || '-'}</strong>
+                        <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>NIM: {p?.patron_nim || '-'}</div>
                       </td>
                       <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--color-primary)' }}>
-                        {p.document_views}x
+                        {p?.document_views || 0}x
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <span className="badge badge-primary" style={{ fontSize: 10 }}>
-                          {p.tokens_used} tiket
+                          {p?.tokens_used || 0} tiket
                         </span>
                       </td>
                     </tr>
@@ -440,7 +434,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onShowTo
           Peringkat naskah karya ilmiah yang paling banyak dibuka & dibaca oleh pemustaka
         </p>
 
-        {topArticles.length === 0 ? (
+        {safeTopArticles.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-text-muted)', fontSize: 13.5 }}>
             Belum ada log pembacaan naskah yang tercatat di database audit.
           </div>
@@ -457,7 +451,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onShowTo
                 </tr>
               </thead>
               <tbody>
-                {topArticles.map((art, idx) => (
+                {safeTopArticles.map((art, idx) => (
                   <tr key={`${art.eprint_id}-${idx}`}>
                     <td style={{ textAlign: 'center' }}>
                       <span

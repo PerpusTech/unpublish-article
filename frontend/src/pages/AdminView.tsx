@@ -53,7 +53,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
-      
+
       const now = ctx.currentTime;
       const osc1 = ctx.createOscillator();
       const osc2 = ctx.createOscillator();
