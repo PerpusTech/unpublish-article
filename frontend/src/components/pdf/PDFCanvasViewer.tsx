@@ -14,7 +14,7 @@ interface PDFCanvasViewerProps {
   onClose: () => void;
 }
 
-interface SecondaryDocumentInfo {
+interface DocumentInfo {
   articleId: number;
   docId: number;
   title: string;
@@ -35,6 +35,21 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
   const [screenshotWarning, setScreenshotWarning] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<string>(() => new Date().toLocaleString('id-ID'));
 
+  // Primary Document (Left Pane / Single Mode)
+  const [primaryDoc, setPrimaryDoc] = useState<DocumentInfo>({
+    articleId,
+    docId,
+    title: articleTitle,
+  });
+
+  // Secondary Document (Right Pane in Spread Mode)
+  const [secondaryDoc, setSecondaryDoc] = useState<DocumentInfo | null>(null);
+
+  // Document Picker Modal State
+  const [isDocPickerOpen, setIsDocPickerOpen] = useState<boolean>(false);
+  const [docPickerTarget, setDocPickerTarget] = useState<'left' | 'right'>('right');
+  const [docPickerTab, setDocPickerTab] = useState<'article_docs' | 'recent_reads' | 'catalog_search'>('article_docs');
+
   // PDF.js State for Primary Document
   const [primaryPdfDoc, setPrimaryPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [primaryNumPages, setPrimaryNumPages] = useState<number>(0);
@@ -47,15 +62,11 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
   const [secondaryNumPages, setSecondaryNumPages] = useState<number>(0);
   const [secondaryCurrentPage, setSecondaryCurrentPage] = useState<number>(1);
   const [secondaryLoading, setSecondaryLoading] = useState<boolean>(false);
+  const [secondaryError, setSecondaryError] = useState<string | null>(null);
 
   // Current article details (to list all documents attached to this article)
   const [currentArticleDetail, setCurrentArticleDetail] = useState<ArticleItem | null>(null);
   const [loadingArticleDetail, setLoadingArticleDetail] = useState<boolean>(false);
-
-  // Secondary Document for Right Pane in 2-Page / Comparative Mode
-  const [secondaryDoc, setSecondaryDoc] = useState<SecondaryDocumentInfo | null>(null);
-  const [isDocPickerOpen, setIsDocPickerOpen] = useState<boolean>(false);
-  const [docPickerTab, setDocPickerTab] = useState<'article_docs' | 'recent_reads' | 'catalog_search'>('article_docs');
 
   // Catalog search state inside Document Picker
   const [searchCatalogQuery, setSearchCatalogQuery] = useState<string>('');
@@ -92,10 +103,10 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
   }
 
   const effectiveTokenId = currentSession?.id || localStorage.getItem('ums_patron_token_id') || undefined;
-  const mainStreamUrl = api.getDocumentStreamUrl(articleId, docId, effectiveTokenId);
+  const primaryStreamUrl = api.getDocumentStreamUrl(primaryDoc.articleId, primaryDoc.docId, effectiveTokenId);
   const secondaryStreamUrl = secondaryDoc
     ? api.getDocumentStreamUrl(secondaryDoc.articleId, secondaryDoc.docId, effectiveTokenId)
-    : mainStreamUrl;
+    : primaryStreamUrl;
 
   // 1. Fetch current article details (to list other documents in this article)
   useEffect(() => {
@@ -109,7 +120,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
           if (art.documents && art.documents.length > 1) {
             const otherDoc = art.documents.find((d) => d.docid !== docId);
             if (otherDoc) {
-              setSecondaryDoc((prev: SecondaryDocumentInfo | null) =>
+              setSecondaryDoc((prev: DocumentInfo | null) =>
                 prev || {
                   articleId: art.eprintid,
                   docId: otherDoc.docid,
@@ -138,9 +149,10 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     let isCancelled = false;
     setPrimaryLoading(true);
     setPrimaryError(null);
+    setPrimaryPdfDoc(null);
 
     const loadingTask = pdfjsLib.getDocument({
-      url: mainStreamUrl,
+      url: primaryStreamUrl,
       withCredentials: true,
     });
 
@@ -155,8 +167,8 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       })
       .catch((err) => {
         if (!isCancelled) {
-          console.warn('Gagal memuat PDF via PDF.js, beralih ke stream fallback:', err);
-          setPrimaryError('Gagal memuat render PDF. Pastikan format berkas valid.');
+          console.warn('Gagal memuat PDF Utama via PDF.js:', err);
+          setPrimaryError('Gagal memuat render PDF utama.');
           setPrimaryLoading(false);
         }
       });
@@ -167,13 +179,15 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
         loadingTask.destroy();
       } catch { }
     };
-  }, [mainStreamUrl]);
+  }, [primaryStreamUrl]);
 
   // 3. Load Secondary Document using PDF.js when in spread mode
   useEffect(() => {
     if (viewMode !== 'spread') return;
     let isCancelled = false;
     setSecondaryLoading(true);
+    setSecondaryError(null);
+    setSecondaryPdfDoc(null);
 
     const loadingTask = pdfjsLib.getDocument({
       url: secondaryStreamUrl,
@@ -191,7 +205,8 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       })
       .catch((err) => {
         if (!isCancelled) {
-          console.warn('Gagal memuat Secondary PDF:', err);
+          console.warn('Gagal memuat PDF Kedua via PDF.js:', err);
+          setSecondaryError('Gagal memuat render PDF kedua.');
           setSecondaryLoading(false);
         }
       });
@@ -206,34 +221,43 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
 
   // 4. Render Primary Page onto Canvas
   useEffect(() => {
-    if (!primaryPdfDoc || !primaryCanvasRef.current) return;
+    if (!primaryPdfDoc || !primaryCanvasRef.current || (primaryPdfDoc as any)._transport === null) return;
     let isCancelled = false;
     let renderTask: any = null;
 
-    primaryPdfDoc.getPage(primaryCurrentPage).then((page) => {
-      if (isCancelled || !primaryCanvasRef.current) return;
+    try {
+      primaryPdfDoc.getPage(primaryCurrentPage)
+        .then((page) => {
+          if (isCancelled || !primaryCanvasRef.current) return;
 
-      const canvas = primaryCanvasRef.current;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+          const canvas = primaryCanvasRef.current;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
 
-      const dpr = window.devicePixelRatio || 1.5;
-      const baseScale = (zoom / 100) * 1.35;
-      const viewport = page.getViewport({ scale: baseScale * dpr });
+          const dpr = window.devicePixelRatio || 1.5;
+          const scaleMultiplier = viewMode === 'spread' ? 1.05 : 1.35;
+          const baseScale = (zoom / 100) * scaleMultiplier;
+          const viewport = page.getViewport({ scale: baseScale * dpr });
 
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      canvas.style.width = `${Math.round(viewport.width / dpr)}px`;
-      canvas.style.height = `${Math.round(viewport.height / dpr)}px`;
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          canvas.style.width = `${Math.round(viewport.width / dpr)}px`;
+          canvas.style.height = `${Math.round(viewport.height / dpr)}px`;
 
-      const renderContext = {
-        canvasContext: ctx,
-        viewport: viewport,
-      };
+          const renderContext = {
+            canvasContext: ctx,
+            viewport: viewport,
+          };
 
-      renderTask = page.render(renderContext);
-      renderTask.promise.catch(() => { });
-    });
+          renderTask = page.render(renderContext);
+          renderTask.promise.catch(() => { });
+        })
+        .catch((e) => {
+          console.warn('Gagal render halaman utama:', e);
+        });
+    } catch (e) {
+      console.warn('Error getPage utama:', e);
+    }
 
     return () => {
       isCancelled = true;
@@ -243,38 +267,46 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
         } catch { }
       }
     };
-  }, [primaryPdfDoc, primaryCurrentPage, zoom]);
+  }, [primaryPdfDoc, primaryCurrentPage, zoom, viewMode]);
 
   // 5. Render Secondary Page onto Canvas
   useEffect(() => {
-    if (viewMode !== 'spread' || !secondaryPdfDoc || !secondaryCanvasRef.current) return;
+    if (viewMode !== 'spread' || !secondaryPdfDoc || !secondaryCanvasRef.current || (secondaryPdfDoc as any)._transport === null) return;
     let isCancelled = false;
     let renderTask: any = null;
 
-    secondaryPdfDoc.getPage(secondaryCurrentPage).then((page) => {
-      if (isCancelled || !secondaryCanvasRef.current) return;
+    try {
+      secondaryPdfDoc.getPage(secondaryCurrentPage)
+        .then((page) => {
+          if (isCancelled || !secondaryCanvasRef.current) return;
 
-      const canvas = secondaryCanvasRef.current;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+          const canvas = secondaryCanvasRef.current;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
 
-      const dpr = window.devicePixelRatio || 1.5;
-      const baseScale = (zoom / 100) * 1.35;
-      const viewport = page.getViewport({ scale: baseScale * dpr });
+          const dpr = window.devicePixelRatio || 1.5;
+          const baseScale = (zoom / 100) * 1.05;
+          const viewport = page.getViewport({ scale: baseScale * dpr });
 
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      canvas.style.width = `${Math.round(viewport.width / dpr)}px`;
-      canvas.style.height = `${Math.round(viewport.height / dpr)}px`;
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          canvas.style.width = `${Math.round(viewport.width / dpr)}px`;
+          canvas.style.height = `${Math.round(viewport.height / dpr)}px`;
 
-      const renderContext = {
-        canvasContext: ctx,
-        viewport: viewport,
-      };
+          const renderContext = {
+            canvasContext: ctx,
+            viewport: viewport,
+          };
 
-      renderTask = page.render(renderContext);
-      renderTask.promise.catch(() => { });
-    });
+          renderTask = page.render(renderContext);
+          renderTask.promise.catch(() => { });
+        })
+        .catch((e) => {
+          console.warn('Gagal render halaman kedua:', e);
+        });
+    } catch (e) {
+      console.warn('Error getPage kedua:', e);
+    }
 
     return () => {
       isCancelled = true;
@@ -296,7 +328,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     } catch { }
   }, [isDocPickerOpen]);
 
-  // Search catalog handler for right pane picker
+  // Search catalog handler for picker
   const handleSearchCatalog = async (q: string) => {
     setSearchCatalogQuery(q);
     if (!q.trim()) {
@@ -334,6 +366,16 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
         setLoadingSearchArticleDoc(null);
       }
     }
+  };
+
+  // Helper to apply picked document to the active target pane (left or right)
+  const applyPickedDocument = (docItem: DocumentInfo) => {
+    if (docPickerTarget === 'left') {
+      setPrimaryDoc(docItem);
+    } else {
+      setSecondaryDoc(docItem);
+    }
+    setIsDocPickerOpen(false);
   };
 
   // Toggle browser Fullscreen mode with robust cross-browser API
@@ -434,9 +476,9 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       // Send live incident telemetry to backend
       api.reportSecurityIncident({
         action: violationAction,
-        articleId,
-        docId,
-        articleTitle,
+        articleId: primaryDoc.articleId,
+        docId: primaryDoc.docId,
+        articleTitle: primaryDoc.title,
       }).catch(() => { });
 
       setTimeout(() => {
@@ -537,7 +579,12 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
 
     const handleWindowBlur = () => {
       if (focusCooldownRef.current) return;
-      setIsWindowFocused(false);
+      // Debounce window blur to prevent false positive when switching UI controls
+      setTimeout(() => {
+        if (!document.hasFocus() || document.hidden) {
+          setIsWindowFocused(false);
+        }
+      }, 150);
     };
 
     const handleMouseLeave = (e: MouseEvent) => {
@@ -547,14 +594,6 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       }
     };
 
-    // Heartbeat check for window focus
-    const focusHeartbeatTimer = setInterval(() => {
-      if (focusCooldownRef.current) return;
-      if (!document.hasFocus()) {
-        setIsWindowFocused(false);
-      }
-    }, 80);
-
     // Register all capture phase event listeners
     window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('keyup', handleKeyUp, true);
@@ -563,17 +602,14 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     document.addEventListener('copy', handleCopyCut, true);
     document.addEventListener('cut', handleCopyCut, true);
     document.addEventListener('contextmenu', handlePreventContextAndSelect, true);
-    document.addEventListener('selectstart', handlePreventContextAndSelect, true);
     document.addEventListener('dragstart', handlePreventContextAndSelect, true);
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', () => setIsWindowFocused(true));
     window.addEventListener('blur', handleWindowBlur);
-    window.addEventListener('focusout', handleWindowBlur);
     document.documentElement.addEventListener('mouseleave', handleMouseLeave);
 
     return () => {
-      clearInterval(focusHeartbeatTimer);
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('keyup', handleKeyUp, true);
       document.removeEventListener('keydown', handleKeyDown, true);
@@ -581,15 +617,13 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       document.removeEventListener('copy', handleCopyCut, true);
       document.removeEventListener('cut', handleCopyCut, true);
       document.removeEventListener('contextmenu', handlePreventContextAndSelect, true);
-      document.removeEventListener('selectstart', handlePreventContextAndSelect, true);
       document.removeEventListener('dragstart', handlePreventContextAndSelect, true);
 
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
-      window.removeEventListener('focusout', handleWindowBlur);
       document.documentElement.removeEventListener('mouseleave', handleMouseLeave);
     };
-  }, [articleId, docId, articleTitle, toggleFullscreen, sanitizeClipboard]);
+  }, [primaryDoc, toggleFullscreen, sanitizeClipboard]);
 
   // Prevent background body scrolling while reader is open
   useEffect(() => {
@@ -741,9 +775,9 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
               overflow: 'hidden',
               textOverflow: 'ellipsis',
             }}
-            title={articleTitle}
+            title={primaryDoc.title}
           >
-            {articleTitle}
+            {primaryDoc.title}
           </span>
         </div>
 
@@ -810,8 +844,8 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
             </button>
           </div>
 
-          {/* Page Navigation Controls */}
-          {primaryNumPages > 0 && (
+          {/* Page Navigation Controls for Single Mode */}
+          {viewMode === 'single' && primaryNumPages > 0 && (
             <div
               style={{
                 display: 'flex',
@@ -1049,7 +1083,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                 {primaryError ? (
                   /* Fallback Iframe if PDF.js decoding fails */
                   <iframe
-                    src={`${mainStreamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                    src={`${primaryStreamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
                     title="PDF Reader Fallback"
                     style={{
                       width: `${Math.round(960 * (zoom / 100))}px`,
@@ -1134,12 +1168,13 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                     position: 'relative',
                     backgroundColor: '#ffffff',
                     boxShadow: '0 12px 48px rgba(0, 0, 0, 0.75)',
-                    borderRadius: '4px 0 0 4px',
+                    borderRadius: 4,
                     overflow: 'hidden',
                     display: 'flex',
                     flexDirection: 'column',
                   }}
                 >
+                  {/* Left Pane Header Bar with Doc Switcher & Pagination */}
                   <div
                     style={{
                       backgroundColor: '#121215',
@@ -1152,20 +1187,87 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                       fontSize: 11,
                       fontWeight: 700,
                       zIndex: 30,
+                      gap: 8,
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', flex: 1 }}>
                       <span style={{ backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#fff', padding: '1px 6px', borderRadius: 3, fontSize: 10 }}>
-                        HALAMAN KIRI (UTAMA)
+                        HALAMAN KIRI
                       </span>
                       <span style={{ color: '#f4f4f5', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {articleTitle}
+                        {primaryDoc.filename || primaryDoc.title}
                       </span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {/* Left Page Number Controls */}
+                      {primaryNumPages > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 4, padding: '1px 4px', gap: 2 }}>
+                          <button
+                            type="button"
+                            disabled={primaryCurrentPage <= 1}
+                            onClick={() => setPrimaryCurrentPage((p) => Math.max(1, p - 1))}
+                            style={{ background: 'transparent', border: 'none', color: primaryCurrentPage <= 1 ? '#52525b' : '#fff', cursor: 'pointer', padding: 2, fontSize: 10 }}
+                          >
+                            ◀
+                          </button>
+                          <span style={{ fontSize: 10.5, fontWeight: 700, color: '#f4f4f5', minWidth: 40, textAlign: 'center' }}>
+                            {primaryCurrentPage}/{primaryNumPages}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={primaryCurrentPage >= primaryNumPages}
+                            onClick={() => setPrimaryCurrentPage((p) => Math.min(primaryNumPages, p + 1))}
+                            style={{ background: 'transparent', border: 'none', color: primaryCurrentPage >= primaryNumPages ? '#52525b' : '#fff', cursor: 'pointer', padding: 2, fontSize: 10 }}
+                          >
+                            ▶
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Select PDF for Left Pane */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDocPickerTarget('left');
+                          setIsDocPickerOpen(true);
+                        }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          backgroundColor: '#18181b',
+                          color: '#ffffff',
+                          border: '1px solid #3f3f46',
+                          borderRadius: 6,
+                          padding: '3px 8px',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                        <span>Pilih PDF Kiri</span>
+                      </button>
                     </div>
                   </div>
 
-                  <div style={{ position: 'relative', minWidth: 300, minHeight: 450, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <canvas ref={primaryCanvasRef} style={{ display: primaryLoading ? 'none' : 'block' }} />
+                  <div style={{ position: 'relative', minWidth: 320, minHeight: 460, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {primaryLoading && (
+                      <div style={{ padding: '40px', color: '#71717a', fontSize: 12 }}>Memuat naskah kiri...</div>
+                    )}
+                    {primaryError ? (
+                      <iframe
+                        src={`${primaryStreamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                        title="PDF Left"
+                        style={{ width: '460px', height: '80vh', border: 'none' }}
+                      />
+                    ) : (
+                      <canvas ref={primaryCanvasRef} style={{ display: primaryLoading ? 'none' : 'block' }} />
+                    )}
 
                     {/* Watermark Left */}
                     <div
@@ -1211,18 +1313,19 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                   </div>
                 </div>
 
-                {/* Right Spread Pane (Secondary / Comparative Document) */}
+                {/* Right Spread Pane (Secondary Document) */}
                 <div
                   style={{
                     position: 'relative',
                     backgroundColor: '#ffffff',
                     boxShadow: '0 12px 48px rgba(0, 0, 0, 0.75)',
-                    borderRadius: '0 4px 4px 0',
+                    borderRadius: 4,
                     overflow: 'hidden',
                     display: 'flex',
                     flexDirection: 'column',
                   }}
                 >
+                  {/* Right Pane Header Bar with Doc Switcher & Pagination */}
                   <div
                     style={{
                       backgroundColor: '#121215',
@@ -1243,32 +1346,59 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                         HALAMAN KANAN
                       </span>
                       <span style={{ color: '#f4f4f5', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {secondaryDoc ? `${secondaryDoc.filename || secondaryDoc.title}` : articleTitle}
+                        {secondaryDoc ? `${secondaryDoc.filename || secondaryDoc.title}` : primaryDoc.title}
                       </span>
                     </div>
 
-                    {/* Switch PDF Document Button for Right Pane */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {/* Right Page Number Controls */}
+                      {secondaryNumPages > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 4, padding: '1px 4px', gap: 2 }}>
+                          <button
+                            type="button"
+                            disabled={secondaryCurrentPage <= 1}
+                            onClick={() => setSecondaryCurrentPage((p) => Math.max(1, p - 1))}
+                            style={{ background: 'transparent', border: 'none', color: secondaryCurrentPage <= 1 ? '#52525b' : '#fff', cursor: 'pointer', padding: 2, fontSize: 10 }}
+                          >
+                            ◀
+                          </button>
+                          <span style={{ fontSize: 10.5, fontWeight: 700, color: '#f4f4f5', minWidth: 40, textAlign: 'center' }}>
+                            {secondaryCurrentPage}/{secondaryNumPages}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={secondaryCurrentPage >= secondaryNumPages}
+                            onClick={() => setSecondaryCurrentPage((p) => Math.min(secondaryNumPages, p + 1))}
+                            style={{ background: 'transparent', border: 'none', color: secondaryCurrentPage >= secondaryNumPages ? '#52525b' : '#fff', cursor: 'pointer', padding: 2, fontSize: 10 }}
+                          >
+                            ▶
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Select PDF for Right Pane */}
                       <button
                         type="button"
-                        onClick={() => setIsDocPickerOpen(true)}
+                        onClick={() => {
+                          setDocPickerTarget('right');
+                          setIsDocPickerOpen(true);
+                        }}
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: 5,
+                          gap: 4,
                           backgroundColor: '#18181b',
                           color: '#ffffff',
                           border: '1px solid #3f3f46',
                           borderRadius: 6,
-                          padding: '3px 9px',
+                          padding: '3px 8px',
                           fontSize: 11,
                           fontWeight: 700,
                           cursor: 'pointer',
                           whiteSpace: 'nowrap',
-                          transition: 'all 0.15s ease',
                         }}
                       >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                         </svg>
                         <span>Pilih PDF Kanan</span>
@@ -1294,8 +1424,19 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                     </div>
                   </div>
 
-                  <div style={{ position: 'relative', minWidth: 300, minHeight: 450, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <canvas ref={secondaryCanvasRef} style={{ display: secondaryLoading ? 'none' : 'block' }} />
+                  <div style={{ position: 'relative', minWidth: 320, minHeight: 460, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {secondaryLoading && (
+                      <div style={{ padding: '40px', color: '#71717a', fontSize: 12 }}>Memuat naskah kanan...</div>
+                    )}
+                    {secondaryError ? (
+                      <iframe
+                        src={`${secondaryStreamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                        title="PDF Right"
+                        style={{ width: '460px', height: '80vh', border: 'none' }}
+                      />
+                    ) : (
+                      <canvas ref={secondaryCanvasRef} style={{ display: secondaryLoading ? 'none' : 'block' }} />
+                    )}
 
                     {/* Watermark Right */}
                     <div
@@ -1344,7 +1485,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
             )}
           </div>
 
-          {/* Document Picker Modal for Dual Reading (Mode 2 Halaman) */}
+          {/* Document Picker Modal (Target Left or Right Pane) */}
           {isDocPickerOpen && (
             <div
               className="modal-backdrop"
@@ -1408,10 +1549,10 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                     </div>
                     <div>
                       <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f4f4f5' }}>
-                        Pilih PDF Halaman Kanan (Mode 2 Halaman)
+                        Pilih PDF Halaman {docPickerTarget === 'left' ? 'Kiri' : 'Kanan'}
                       </h4>
                       <p style={{ margin: 0, fontSize: 12, color: '#a1a1aa' }}>
-                        Bandingkan bab atau naskah lain secara berdampingan
+                        Bandingkan bab naskah atau referensi lain secara berdampingan
                       </p>
                     </div>
                   </div>
@@ -1512,28 +1653,27 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                           <div style={{ fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>
                             Pilih berkas dari naskah <strong>{articleTitle}</strong>:
                           </div>
-                          {currentArticleDetail.documents.map((docItem) => {
-                            const isCurrentlyPrimary = docItem.docid === docId;
-                            const isCurrentlySecondary = secondaryDoc?.docId === docItem.docid;
+                          {currentArticleDetail.documents.map((docItem: any) => {
+                            const isSelectedInLeft = primaryDoc.docId === docItem.docid;
+                            const isSelectedInRight = secondaryDoc?.docId === docItem.docid;
                             return (
                               <div
                                 key={docItem.docid}
                                 onClick={() => {
-                                  setSecondaryDoc({
+                                  applyPickedDocument({
                                     articleId: currentArticleDetail.eprintid,
                                     docId: docItem.docid,
                                     title: currentArticleDetail.title,
                                     filename: docItem.filename || `Dokumen #${docItem.docid}`,
                                   });
-                                  setIsDocPickerOpen(false);
                                 }}
                                 style={{
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'space-between',
                                   padding: '12px 16px',
-                                  backgroundColor: isCurrentlySecondary ? '#27272a' : '#18181b',
-                                  border: isCurrentlySecondary ? '1px solid #52525b' : '1px solid #27272a',
+                                  backgroundColor: (docPickerTarget === 'left' ? isSelectedInLeft : isSelectedInRight) ? '#27272a' : '#18181b',
+                                  border: (docPickerTarget === 'left' ? isSelectedInLeft : isSelectedInRight) ? '1px solid #52525b' : '1px solid #27272a',
                                   borderRadius: 8,
                                   cursor: 'pointer',
                                   transition: 'all 0.15s ease',
@@ -1568,12 +1708,12 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                 </div>
 
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  {isCurrentlyPrimary && (
+                                  {isSelectedInLeft && (
                                     <span style={{ fontSize: 10.5, backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#fff', padding: '2px 8px', borderRadius: 4 }}>
                                       Aktif di Kiri
                                     </span>
                                   )}
-                                  {isCurrentlySecondary && (
+                                  {isSelectedInRight && (
                                     <span style={{ fontSize: 10.5, backgroundColor: '#3f3f46', color: '#fff', padding: '2px 8px', borderRadius: 4 }}>
                                       Aktif di Kanan
                                     </span>
@@ -1581,9 +1721,9 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                   <button
                                     type="button"
                                     style={{
-                                      backgroundColor: isCurrentlySecondary ? '#ffffff' : '#27272a',
-                                      color: isCurrentlySecondary ? '#09090b' : '#ffffff',
-                                      border: isCurrentlySecondary ? 'none' : '1px solid #3f3f46',
+                                      backgroundColor: (docPickerTarget === 'left' ? isSelectedInLeft : isSelectedInRight) ? '#ffffff' : '#27272a',
+                                      color: (docPickerTarget === 'left' ? isSelectedInLeft : isSelectedInRight) ? '#09090b' : '#ffffff',
+                                      border: (docPickerTarget === 'left' ? isSelectedInLeft : isSelectedInRight) ? 'none' : '1px solid #3f3f46',
                                       borderRadius: 6,
                                       padding: '5px 12px',
                                       fontSize: 12,
@@ -1591,7 +1731,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                       cursor: 'pointer',
                                     }}
                                   >
-                                    {isCurrentlySecondary ? 'Terpilih' : 'Pilih'}
+                                    {(docPickerTarget === 'left' ? isSelectedInLeft : isSelectedInRight) ? 'Terpilih' : `Pilih untuk ${docPickerTarget === 'left' ? 'Kiri' : 'Kanan'}`}
                                   </button>
                                 </div>
                               </div>
@@ -1612,7 +1752,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                       {recentReadsList.length > 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                           <div style={{ fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>
-                            Pilih naskah yang baru saja Anda buka untuk dimuat di halaman kanan:
+                            Pilih naskah yang baru saja Anda buka untuk dimuat di halaman {docPickerTarget === 'left' ? 'kiri' : 'kanan'}:
                           </div>
                           {recentReadsList.map((item) => (
                             <div
@@ -1621,13 +1761,12 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                 try {
                                   const full = await api.getArticle(item.eprintid);
                                   const targetDocId = full.documents?.[0]?.docid || 1;
-                                  setSecondaryDoc({
+                                  applyPickedDocument({
                                     articleId: item.eprintid,
                                     docId: targetDocId,
                                     title: item.title,
                                     filename: full.documents?.[0]?.filename || item.title,
                                   });
-                                  setIsDocPickerOpen(false);
                                 } catch (e) {
                                   console.warn('Gagal memuat dokumen:', e);
                                 }
@@ -1637,8 +1776,8 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
                                 padding: '12px 16px',
-                                backgroundColor: secondaryDoc?.articleId === item.eprintid ? '#27272a' : '#18181b',
-                                border: secondaryDoc?.articleId === item.eprintid ? '1px solid #52525b' : '1px solid #27272a',
+                                backgroundColor: '#18181b',
+                                border: '1px solid #27272a',
                                 borderRadius: 8,
                                 cursor: 'pointer',
                                 transition: 'all 0.15s ease',
@@ -1656,9 +1795,9 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                               <button
                                 type="button"
                                 style={{
-                                  backgroundColor: secondaryDoc?.articleId === item.eprintid ? '#ffffff' : '#27272a',
-                                  color: secondaryDoc?.articleId === item.eprintid ? '#09090b' : '#ffffff',
-                                  border: secondaryDoc?.articleId === item.eprintid ? 'none' : '1px solid #3f3f46',
+                                  backgroundColor: '#27272a',
+                                  color: '#ffffff',
+                                  border: '1px solid #3f3f46',
                                   borderRadius: 6,
                                   padding: '5px 12px',
                                   fontSize: 12,
@@ -1667,7 +1806,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                   whiteSpace: 'nowrap',
                                 }}
                               >
-                                Muat di Kanan
+                                Muat di {docPickerTarget === 'left' ? 'Kiri' : 'Kanan'}
                               </button>
                             </div>
                           ))}
@@ -1723,7 +1862,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                   padding: '10px 14px',
                                 }}
                               >
-                                <div style={{ display: 'flex', alignItems: 'center', border: 'none', justifyContent: 'space-between', gap: 10 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                                   <div style={{ flex: 1 }}>
                                     <div style={{ fontSize: 13, fontWeight: 600, color: '#f4f4f5' }}>{art.title}</div>
                                     <div style={{ fontSize: 11, color: '#a1a1aa', marginTop: 2 }}>
@@ -1756,7 +1895,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                       <div style={{ fontSize: 12, color: '#a1a1aa' }}>Memuat berkas...</div>
                                     ) : fullDetail?.documents && fullDetail.documents.length > 0 ? (
                                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                        {fullDetail.documents.map((d) => (
+                                        {fullDetail.documents.map((d: any) => (
                                           <div
                                             key={d.docid}
                                             style={{
@@ -1779,13 +1918,12 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                             <button
                                               type="button"
                                               onClick={() => {
-                                                setSecondaryDoc({
+                                                applyPickedDocument({
                                                   articleId: art.eprintid,
                                                   docId: d.docid,
                                                   title: art.title,
                                                   filename: d.filename || `Dokumen #${d.docid}`,
                                                 });
-                                                setIsDocPickerOpen(false);
                                               }}
                                               style={{
                                                 backgroundColor: '#27272a',
@@ -1798,7 +1936,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                                 cursor: 'pointer',
                                               }}
                                             >
-                                              Pilih Berkas Ini
+                                              Pilih untuk {docPickerTarget === 'left' ? 'Kiri' : 'Kanan'}
                                             </button>
                                           </div>
                                         ))}
@@ -1807,13 +1945,12 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => {
-                                          setSecondaryDoc({
+                                          applyPickedDocument({
                                             articleId: art.eprintid,
                                             docId: 1,
                                             title: art.title,
                                             filename: art.title,
                                           });
-                                          setIsDocPickerOpen(false);
                                         }}
                                         style={{
                                           backgroundColor: '#27272a',
@@ -1826,7 +1963,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                           cursor: 'pointer',
                                         }}
                                       >
-                                        Buka Naskah di Kanan
+                                        Buka di {docPickerTarget === 'left' ? 'Kiri' : 'Kanan'}
                                       </button>
                                     )}
                                   </div>
