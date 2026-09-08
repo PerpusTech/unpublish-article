@@ -16,12 +16,50 @@ export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({
   const [currentArticle, setCurrentArticle] = useState<ArticleItem | null>(article);
   const [loadingDocs, setLoadingDocs] = useState(false);
 
-  // Prevent background body scrolling while modal is open
+  // Prevent background body scrolling & intercept copy/print shortcuts while modal is open
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Intercept Ctrl+C, Ctrl+X, Ctrl+A, Ctrl+P, PrintScreen
+      if (
+        ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C' || e.key === 'x' || e.key === 'X' || e.key === 'a' || e.key === 'A' || e.key === 'p' || e.key === 'P')) ||
+        e.key === 'PrintScreen' ||
+        e.keyCode === 44
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          if (navigator?.clipboard?.writeText) {
+            navigator.clipboard.writeText(
+              'DOKUMEN DAN ABSTRAK INI DILINDUNGI HAK CIPTA UPT PERPUSTAKAAN UNIVERSITAS MUHAMMADIYAH SURAKARTA.\n' +
+              'Penyalinan teks naskah dan abstrak dinonaktifkan.'
+            ).catch(() => {});
+          }
+        } catch {}
+      }
+    };
+
+    const handleCopy = (e: ClipboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        if (e.clipboardData) {
+          e.clipboardData.setData('text/plain', 'DOKUMEN DAN ABSTRAK DILINDUNGI HAK CIPTA UPT PERPUSTAKAAN UMS — Penyalinan dilarang.');
+        }
+      } catch {}
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('copy', handleCopy, true);
+    document.addEventListener('cut', handleCopy, true);
+
     return () => {
       document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('copy', handleCopy, true);
+      document.removeEventListener('cut', handleCopy, true);
     };
   }, []);
 
@@ -57,11 +95,34 @@ export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({
   const docs = currentArticle.documents || [];
 
   return createPortal(
-    <div className="modal-backdrop" onClick={onClose}>
+    <div
+      className="modal-backdrop"
+      onClick={onClose}
+      onContextMenu={(e) => e.preventDefault()}
+    >
       <div
         className="modal-dialog large animated-modal"
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '820px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
+        onContextMenu={(e) => e.preventDefault()}
+        onCopy={(e) => {
+          e.preventDefault();
+          try {
+            navigator.clipboard?.writeText?.(
+              'DOKUMEN DAN ABSTRAK INI DILINDUNGI HAK CIPTA UPT PERPUSTAKAAN UNIVERSITAS MUHAMMADIYAH SURAKARTA.\n' +
+              'Penyalinan teks naskah dan abstrak dinonaktifkan.'
+            );
+          } catch {}
+        }}
+        onCut={(e) => e.preventDefault()}
+        onDragStart={(e) => e.preventDefault()}
+        style={{
+          maxWidth: '820px',
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+        }}
       >
         {/* Header */}
         <div className="modal-header" style={{ padding: '18px 24px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>

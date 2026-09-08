@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import * as pdfjsLib from 'pdfjs-dist';
 import { api, PatronSession, ArticleItem } from '../../services/api';
+
+// Set up PDF.js worker via reliable CDN matching the installed version
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '3.11.174'}/pdf.worker.min.js`;
 
 interface PDFCanvasViewerProps {
   articleId: number;
@@ -31,6 +35,19 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
   const [screenshotWarning, setScreenshotWarning] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<string>(() => new Date().toLocaleString('id-ID'));
 
+  // PDF.js State for Primary Document
+  const [primaryPdfDoc, setPrimaryPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
+  const [primaryNumPages, setPrimaryNumPages] = useState<number>(0);
+  const [primaryCurrentPage, setPrimaryCurrentPage] = useState<number>(1);
+  const [primaryLoading, setPrimaryLoading] = useState<boolean>(true);
+  const [primaryError, setPrimaryError] = useState<string | null>(null);
+
+  // PDF.js State for Secondary Document (Spread / Dual View)
+  const [secondaryPdfDoc, setSecondaryPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
+  const [secondaryNumPages, setSecondaryNumPages] = useState<number>(0);
+  const [secondaryCurrentPage, setSecondaryCurrentPage] = useState<number>(1);
+  const [secondaryLoading, setSecondaryLoading] = useState<boolean>(false);
+
   // Current article details (to list all documents attached to this article)
   const [currentArticleDetail, setCurrentArticleDetail] = useState<ArticleItem | null>(null);
   const [loadingArticleDetail, setLoadingArticleDetail] = useState<boolean>(false);
@@ -51,7 +68,20 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
   // Recent reads from session storage
   const [recentReadsList, setRecentReadsList] = useState<any[]>([]);
 
+  // Canvas Refs
+  const primaryCanvasRef = useRef<HTMLCanvasElement>(null);
+  const secondaryCanvasRef = useRef<HTMLCanvasElement>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
+  const focusCooldownRef = useRef<boolean>(false);
+
+  const handleResumeFocus = useCallback(() => {
+    focusCooldownRef.current = true;
+    setIsWindowFocused(true);
+    window.focus();
+    setTimeout(() => {
+      focusCooldownRef.current = false;
+    }, 450);
+  }, []);
 
   let currentSession = session;
   if (!currentSession) {
@@ -67,7 +97,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     ? api.getDocumentStreamUrl(secondaryDoc.articleId, secondaryDoc.docId, effectiveTokenId)
     : mainStreamUrl;
 
-  // Fetch current article details (to list other documents in this article)
+  // 1. Fetch current article details (to list other documents in this article)
   useEffect(() => {
     let isMounted = true;
     setLoadingArticleDetail(true);
@@ -76,7 +106,6 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       .then((art) => {
         if (isMounted && art) {
           setCurrentArticleDetail(art);
-          // If secondaryDoc is not set and article has multiple documents, auto-suggest next document if available
           if (art.documents && art.documents.length > 1) {
             const otherDoc = art.documents.find((d) => d.docid !== docId);
             if (otherDoc) {
@@ -104,7 +133,160 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     };
   }, [articleId, docId]);
 
-  // Load recent reads from sessionStorage
+  // 2. Load Primary Document using PDF.js
+  useEffect(() => {
+    let isCancelled = false;
+    setPrimaryLoading(true);
+    setPrimaryError(null);
+
+    const loadingTask = pdfjsLib.getDocument({
+      url: mainStreamUrl,
+      withCredentials: true,
+    });
+
+    loadingTask.promise
+      .then((pdf) => {
+        if (!isCancelled) {
+          setPrimaryPdfDoc(pdf);
+          setPrimaryNumPages(pdf.numPages);
+          setPrimaryCurrentPage(1);
+          setPrimaryLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!isCancelled) {
+          console.warn('Gagal memuat PDF via PDF.js, beralih ke stream fallback:', err);
+          setPrimaryError('Gagal memuat render PDF. Pastikan format berkas valid.');
+          setPrimaryLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+      try {
+        loadingTask.destroy();
+      } catch { }
+    };
+  }, [mainStreamUrl]);
+
+  // 3. Load Secondary Document using PDF.js when in spread mode
+  useEffect(() => {
+    if (viewMode !== 'spread') return;
+    let isCancelled = false;
+    setSecondaryLoading(true);
+
+    const loadingTask = pdfjsLib.getDocument({
+      url: secondaryStreamUrl,
+      withCredentials: true,
+    });
+
+    loadingTask.promise
+      .then((pdf) => {
+        if (!isCancelled) {
+          setSecondaryPdfDoc(pdf);
+          setSecondaryNumPages(pdf.numPages);
+          setSecondaryCurrentPage(1);
+          setSecondaryLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!isCancelled) {
+          console.warn('Gagal memuat Secondary PDF:', err);
+          setSecondaryLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+      try {
+        loadingTask.destroy();
+      } catch { }
+    };
+  }, [secondaryStreamUrl, viewMode]);
+
+  // 4. Render Primary Page onto Canvas
+  useEffect(() => {
+    if (!primaryPdfDoc || !primaryCanvasRef.current) return;
+    let isCancelled = false;
+    let renderTask: any = null;
+
+    primaryPdfDoc.getPage(primaryCurrentPage).then((page) => {
+      if (isCancelled || !primaryCanvasRef.current) return;
+
+      const canvas = primaryCanvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const dpr = window.devicePixelRatio || 1.5;
+      const baseScale = (zoom / 100) * 1.35;
+      const viewport = page.getViewport({ scale: baseScale * dpr });
+
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.width = `${Math.round(viewport.width / dpr)}px`;
+      canvas.style.height = `${Math.round(viewport.height / dpr)}px`;
+
+      const renderContext = {
+        canvasContext: ctx,
+        viewport: viewport,
+      };
+
+      renderTask = page.render(renderContext);
+      renderTask.promise.catch(() => { });
+    });
+
+    return () => {
+      isCancelled = true;
+      if (renderTask && renderTask.cancel) {
+        try {
+          renderTask.cancel();
+        } catch { }
+      }
+    };
+  }, [primaryPdfDoc, primaryCurrentPage, zoom]);
+
+  // 5. Render Secondary Page onto Canvas
+  useEffect(() => {
+    if (viewMode !== 'spread' || !secondaryPdfDoc || !secondaryCanvasRef.current) return;
+    let isCancelled = false;
+    let renderTask: any = null;
+
+    secondaryPdfDoc.getPage(secondaryCurrentPage).then((page) => {
+      if (isCancelled || !secondaryCanvasRef.current) return;
+
+      const canvas = secondaryCanvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const dpr = window.devicePixelRatio || 1.5;
+      const baseScale = (zoom / 100) * 1.35;
+      const viewport = page.getViewport({ scale: baseScale * dpr });
+
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.width = `${Math.round(viewport.width / dpr)}px`;
+      canvas.style.height = `${Math.round(viewport.height / dpr)}px`;
+
+      const renderContext = {
+        canvasContext: ctx,
+        viewport: viewport,
+      };
+
+      renderTask = page.render(renderContext);
+      renderTask.promise.catch(() => { });
+    });
+
+    return () => {
+      isCancelled = true;
+      if (renderTask && renderTask.cancel) {
+        try {
+          renderTask.cancel();
+        } catch { }
+      }
+    };
+  }, [secondaryPdfDoc, secondaryCurrentPage, zoom, viewMode]);
+
+  // 6. Load recent reads from sessionStorage
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem('ums_patron_recent_reads');
@@ -154,7 +336,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     }
   };
 
-  // Toggle browser Fullscreen mode with robust cross-browser API & fallback
+  // Toggle browser Fullscreen mode with robust cross-browser API
   const toggleFullscreen = useCallback(() => {
     try {
       const doc = document as any;
@@ -179,24 +361,12 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
           container.webkitRequestFullscreen();
         } else if (docEl.webkitRequestFullscreen) {
           docEl.webkitRequestFullscreen();
-        } else if (container?.mozRequestFullScreen) {
-          container.mozRequestFullScreen();
-        } else if (docEl.mozRequestFullScreen) {
-          docEl.mozRequestFullScreen();
-        } else if (container?.msRequestFullscreen) {
-          container.msRequestFullscreen();
-        } else if (docEl.msRequestFullscreen) {
-          docEl.msRequestFullscreen();
         }
       } else {
         if (document.exitFullscreen) {
           document.exitFullscreen().catch(() => { });
         } else if (doc.webkitExitFullscreen) {
           doc.webkitExitFullscreen();
-        } else if (doc.mozCancelFullScreen) {
-          doc.mozCancelFullScreen();
-        } else if (doc.msExitFullscreen) {
-          doc.msExitFullscreen();
         }
       }
     } catch (e) {
@@ -239,63 +409,29 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // 1. Anti-Snipping Tool / Screen Blur when window loses focus (Win+Shift+S, Alt-Tab, Screen Grabber)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        setIsWindowFocused(false);
+  // Continuous Clipboard Sanitization
+  const sanitizeClipboard = useCallback(() => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator?.clipboard?.writeText) {
+        navigator.clipboard.writeText(
+          'DOKUMEN INI DILINDUNGI HAK CIPTA UPT PERPUSTAKAAN DAN LAYANAN DIGITAL UNIVERSITAS MUHAMMADIYAH SURAKARTA.\n' +
+          'Perekaman dan tangkapan layar dinonaktifkan demi perlindungan hak orisinalitas riset civitas akademik.'
+        ).catch(() => { });
       }
-    };
-
-    const handleWindowFocus = () => {
-      setIsWindowFocused(true);
-    };
-
-    const handleWindowBlur = () => {
-      // Whenever window loses OS focus (e.g. Snipping Tool overlay, Alt-Tab, third-party screen grabber),
-      // immediately blur canvas and show auto-shield curtain
-      setIsWindowFocused(false);
-    };
-
-    const handlePointerActivity = () => {
-      if (!document.hidden) {
-        setIsWindowFocused(true);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleWindowFocus);
-    window.addEventListener('blur', handleWindowBlur);
-    window.addEventListener('pointerdown', handlePointerActivity, { capture: true });
-    window.addEventListener('keydown', handlePointerActivity, { capture: true });
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleWindowFocus);
-      window.removeEventListener('blur', handleWindowBlur);
-      window.removeEventListener('pointerdown', handlePointerActivity, { capture: true });
-      window.removeEventListener('keydown', handlePointerActivity, { capture: true });
-    };
+    } catch { }
   }, []);
 
-  // 2. Block PrintScreen, Snipping Shortcuts, DevTools, Ctrl+P, Ctrl+S & Clear Clipboard
+  // 7. Multi-Layer Anti-Screenshot & Screen Capture Protection
   useEffect(() => {
     const triggerProtection = (msg: string, violationAction: string = 'SECURITY_VIOLATION') => {
-      // 1. Immediately blank/blur screen and show auto-shield curtain
+      // Blank/blur screen immediately
       setIsWindowFocused(false);
       setScreenshotWarning(msg);
 
-      // 2. Clear & overwrite clipboard buffer with official UMS Copyright Disclaimer
-      try {
-        if (typeof navigator !== 'undefined' && navigator?.clipboard?.writeText) {
-          navigator.clipboard.writeText(
-            'DOKUMEN INI DILINDUNGI HAK CIPTA UPT PERPUSTAKAAN DAN LAYANAN DIGITAL UNIVERSITAS MUHAMMADIYAH SURAKARTA.\n' +
-            'Perekaman dan tangkapan layar dinonaktifkan demi perlindungan hak orisinalitas riset civitas akademik.'
-          ).catch(() => { });
-        }
-      } catch { }
+      // Overwrite clipboard
+      sanitizeClipboard();
 
-      // 3. Send live incident telemetry to backend for Librarian Live Alert
+      // Send live incident telemetry to backend
       api.reportSecurityIncident({
         action: violationAction,
         articleId,
@@ -303,26 +439,39 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
         articleTitle,
       }).catch(() => { });
 
-      // Auto-dismiss warning toast after 5 seconds, but keep canvas blurred until user consciously clicks/focuses back
       setTimeout(() => {
         setScreenshotWarning(null);
       }, 5000);
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // PrintScreen key (standard, code, keyCode 44)
-      if (e.key === 'PrintScreen' || e.code === 'PrintScreen' || e.keyCode === 44 || e.which === 44) {
+      // PrintScreen key (standard, code, keyCode 44, Snapshot)
+      if (
+        e.key === 'PrintScreen' ||
+        e.code === 'PrintScreen' ||
+        e.key === 'Snapshot' ||
+        e.keyCode === 44 ||
+        e.which === 44
+      ) {
         e.preventDefault();
         e.stopPropagation();
         triggerProtection('Tombol PrintScreen terdeteksi! Tangkapan layar dinonaktifkan demi perlindungan hak cipta.', 'PRINTSCREEN_ATTEMPT');
         return;
       }
 
-      // Windows Snipping Tool (Win + Shift + S) or Mac (Cmd + Shift + 4 / 3 / 5)
+      // Windows Snipping Tool (Win + Shift + S), Mac (Cmd + Shift + 3/4/5), Browser (Ctrl + Shift + S)
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 's' || e.key === 'S' || e.key === '3' || e.key === '4' || e.key === '5')) {
         e.preventDefault();
         e.stopPropagation();
-        triggerProtection('Pintasan perekaman / tangkapan layar dinonaktifkan.', 'SNIPPING_TOOL_ATTEMPT');
+        triggerProtection('Pintasan tangkapan layar dinonaktifkan.', 'SNIPPING_TOOL_ATTEMPT');
+        return;
+      }
+
+      // Ctrl+C (Copy), Ctrl+X (Cut), Ctrl+A (Select All)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C' || e.key === 'x' || e.key === 'X' || e.key === 'a' || e.key === 'A')) {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerProtection('Penyalinan & seleksi naskah dinonaktifkan.', 'COPY_ATTEMPT');
         return;
       }
 
@@ -330,7 +479,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P' || e.key === 's' || e.key === 'S' || e.key === 'u' || e.key === 'U')) {
         e.preventDefault();
         e.stopPropagation();
-        triggerProtection('Fitur pencetakan & pengunduhan dinonaktifkan.', 'PRINT_OR_SAVE_ATTEMPT');
+        triggerProtection('Pencetakan & pengunduhan dinonaktifkan.', 'PRINT_OR_SAVE_ATTEMPT');
         return;
       }
 
@@ -355,7 +504,13 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'PrintScreen' || e.code === 'PrintScreen' || e.keyCode === 44 || e.which === 44) {
+      if (
+        e.key === 'PrintScreen' ||
+        e.code === 'PrintScreen' ||
+        e.key === 'Snapshot' ||
+        e.keyCode === 44 ||
+        e.which === 44
+      ) {
         e.preventDefault();
         e.stopPropagation();
         triggerProtection('Tombol PrintScreen terdeteksi! Tangkapan layar dinonaktifkan.', 'PRINTSCREEN_ATTEMPT');
@@ -364,26 +519,77 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
 
     const handleCopyCut = (e: ClipboardEvent) => {
       e.preventDefault();
-      try {
-        if (e.clipboardData) {
-          e.clipboardData.setData('text/plain', 'UPT Perpustakaan UMS — Perlindungan Hak Cipta Naskah Unpublish.');
-        }
-      } catch { }
+      e.stopPropagation();
+      sanitizeClipboard();
       triggerProtection('Penyalinan teks dokumen dinonaktifkan.', 'COPY_ATTEMPT');
     };
 
+    const handlePreventContextAndSelect = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setIsWindowFocused(false);
+      }
+    };
+
+    const handleWindowBlur = () => {
+      if (focusCooldownRef.current) return;
+      setIsWindowFocused(false);
+    };
+
+    const handleMouseLeave = (e: MouseEvent) => {
+      if (focusCooldownRef.current) return;
+      if (!e.relatedTarget && e.clientY <= 0) {
+        setIsWindowFocused(false);
+      }
+    };
+
+    // Heartbeat check for window focus
+    const focusHeartbeatTimer = setInterval(() => {
+      if (focusCooldownRef.current) return;
+      if (!document.hasFocus()) {
+        setIsWindowFocused(false);
+      }
+    }, 80);
+
+    // Register all capture phase event listeners
     window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('keyup', handleKeyUp, true);
-    window.addEventListener('copy', handleCopyCut, true);
-    window.addEventListener('cut', handleCopyCut, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('keyup', handleKeyUp, true);
+    document.addEventListener('copy', handleCopyCut, true);
+    document.addEventListener('cut', handleCopyCut, true);
+    document.addEventListener('contextmenu', handlePreventContextAndSelect, true);
+    document.addEventListener('selectstart', handlePreventContextAndSelect, true);
+    document.addEventListener('dragstart', handlePreventContextAndSelect, true);
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', () => setIsWindowFocused(true));
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focusout', handleWindowBlur);
+    document.documentElement.addEventListener('mouseleave', handleMouseLeave);
 
     return () => {
+      clearInterval(focusHeartbeatTimer);
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('keyup', handleKeyUp, true);
-      window.removeEventListener('copy', handleCopyCut, true);
-      window.removeEventListener('cut', handleCopyCut, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('keyup', handleKeyUp, true);
+      document.removeEventListener('copy', handleCopyCut, true);
+      document.removeEventListener('cut', handleCopyCut, true);
+      document.removeEventListener('contextmenu', handlePreventContextAndSelect, true);
+      document.removeEventListener('selectstart', handlePreventContextAndSelect, true);
+      document.removeEventListener('dragstart', handlePreventContextAndSelect, true);
+
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focusout', handleWindowBlur);
+      document.documentElement.removeEventListener('mouseleave', handleMouseLeave);
     };
-  }, [articleId, docId, articleTitle, toggleFullscreen]);
+  }, [articleId, docId, articleTitle, toggleFullscreen, sanitizeClipboard]);
 
   // Prevent background body scrolling while reader is open
   useEffect(() => {
@@ -394,387 +600,470 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     };
   }, []);
 
-  // Active session heartbeat: check every 3 seconds to instantly terminate reading if session is revoked by librarian
-  useEffect(() => {
-    let isMounted = true;
-    const checkStatus = async () => {
-      try {
-        const res = await api.getSessionStatus();
-        if (isMounted && (!res.isActive || !res.session)) {
-          alert(res.reason || 'Sesi membaca Anda telah dicabut oleh petugas perpustakaan.');
-          localStorage.removeItem('ums_patron_session');
-          localStorage.removeItem('ums_patron_token_id');
-          onClose();
-          window.location.reload();
-        }
-      } catch { }
-    };
-
-    const interval = setInterval(checkStatus, 3000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [onClose]);
-
   return createPortal(
     <div
       ref={viewerContainerRef}
-      className="modal-backdrop"
-      style={{
-        padding: 0,
-        zIndex: 9999,
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        overflow: 'hidden',
-      }}
+      tabIndex={0}
       onContextMenu={(e) => e.preventDefault()}
+      onCopy={(e) => {
+        e.preventDefault();
+        sanitizeClipboard();
+      }}
+      onCut={(e) => e.preventDefault()}
+      onDragStart={(e) => e.preventDefault()}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: '#09090b',
+        zIndex: 10000,
+        display: 'flex',
+        flexDirection: 'column',
+        outline: 'none',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        color: '#f4f4f5',
+      }}
     >
-      <div
-        style={{
-          width: '100vw',
-          height: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          backgroundColor: '#1e293b',
-          overflow: 'hidden',
-        }}
-      >
-        {/* PDF Reader Toolbar */}
+      {/* CSS Rules for DRM Privacy & Print Blocker */}
+      <style>{`
+        @media print {
+          body * {
+            display: none !important;
+            visibility: hidden !important;
+          }
+          body::after {
+            content: "DOKUMEN DILINDUNGI HAK CIPTA UPT PERPUSTAKAAN UMS — PENCETAKAN DINONAKTIFKAN";
+            display: block !important;
+            font-size: 24pt;
+            text-align: center;
+            padding-top: 200px;
+            color: #000000;
+          }
+        }
+        @keyframes pulseAlert {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.03); }
+          100% { transform: scale(1); }
+        }
+        @keyframes slideDownBanner {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #121215;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #27272a;
+          border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #3f3f46;
+        }
+      `}</style>
+
+      {/* Top Security Banner & Warning Toast */}
+      {screenshotWarning && (
         <div
           style={{
-            backgroundColor: '#0f172a',
-            color: '#ffffff',
+            position: 'absolute',
+            top: 60,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10005,
+            backgroundColor: '#18181b',
+            color: '#f87171',
             padding: '10px 20px',
+            borderRadius: 8,
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.8)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid #334155',
-            gap: 16,
-            flexWrap: 'wrap',
+            gap: 10,
+            fontSize: 13,
+            fontWeight: 700,
+            animation: 'pulseAlert 0.4s ease-in-out',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, overflow: 'hidden', minWidth: 200, flex: 1 }}>
-            <span
-              style={{
-                backgroundColor: 'var(--color-accent)',
-                color: '#fff',
-                fontSize: 11,
-                fontWeight: 700,
-                padding: '2px 6px',
-                borderRadius: 2,
-                whiteSpace: 'nowrap',
-              }}
-            >
-              PROTECTED VIEW
-            </span>
-            <div style={{ fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-heading)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {articleTitle}
-            </div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span>{screenshotWarning}</span>
+        </div>
+      )}
+
+      {/* True Dark Mode Control Header Bar */}
+      <div
+        style={{
+          backgroundColor: '#121215',
+          borderBottom: '1px solid #27272a',
+          padding: '8px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          zIndex: 50,
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.5)',
+        }}
+      >
+        {/* Left: Protected View Badge & Title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, overflow: 'hidden', flex: 1, paddingRight: 16 }}>
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              backgroundColor: '#18181b',
+              border: '1px solid #27272a',
+              padding: '4px 8px',
+              borderRadius: 6,
+              fontSize: 11,
+              fontWeight: 800,
+              letterSpacing: '0.5px',
+              color: '#f59e0b',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#f59e0b' }} />
+            <span>PROTECTED VIEW</span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            {/* View Mode: Single vs Spread (2 Halaman) */}
-            <div
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: '#f4f4f5',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+            title={articleTitle}
+          >
+            {articleTitle}
+          </span>
+        </div>
+
+        {/* Center: Controls (View Mode, Page Navigation, Zoom, Fullscreen) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* View Mode Switcher */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              backgroundColor: '#18181b',
+              border: '1px solid #27272a',
+              borderRadius: 6,
+              padding: 2,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setViewMode('single')}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                backgroundColor: 'rgba(15, 23, 42, 0.8)',
-                border: '1px solid #334155',
-                borderRadius: 8,
-                padding: 3,
-                gap: 3,
+                gap: 5,
+                padding: '4px 10px',
+                fontSize: 12,
+                fontWeight: 600,
+                borderRadius: 4,
+                border: 'none',
+                cursor: 'pointer',
+                backgroundColor: viewMode === 'single' ? '#27272a' : 'transparent',
+                color: viewMode === 'single' ? '#ffffff' : '#a1a1aa',
+                transition: 'all 0.15s ease',
               }}
             >
-              <button
-                type="button"
-                onClick={() => setViewMode('single')}
-                title="Tampilan 1 Halaman Standar"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '4px 10px',
-                  backgroundColor: viewMode === 'single' ? '#3b82f6' : 'transparent',
-                  color: viewMode === 'single' ? '#ffffff' : '#94a3b8',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="4" y="2" width="16" height="20" rx="2" />
-                  <line x1="8" y1="6" x2="16" y2="6" />
-                  <line x1="8" y1="10" x2="16" y2="10" />
-                </svg>
-                <span>1 Halaman</span>
-              </button>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="5" y="2" width="14" height="20" rx="2" />
+              </svg>
+              <span>1 Halaman</span>
+            </button>
 
-              <button
-                type="button"
-                onClick={() => setViewMode('spread')}
-                title="Tampilan 2 Halaman Berdampingan (Mode Buku / Layar Lebar)"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '4px 10px',
-                  backgroundColor: viewMode === 'spread' ? '#3b82f6' : 'transparent',
-                  color: viewMode === 'spread' ? '#ffffff' : '#94a3b8',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                </svg>
-                <span>2 Halaman (Buku)</span>
-              </button>
-            </div>
-
-            {/* Zoom Controls */}
-            <div
+            <button
+              type="button"
+              onClick={() => setViewMode('spread')}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                backgroundColor: 'rgba(15, 23, 42, 0.8)',
-                border: '1px solid #334155',
-                borderRadius: 8,
-                padding: 3,
+                gap: 5,
+                padding: '4px 10px',
+                fontSize: 12,
+                fontWeight: 600,
+                borderRadius: 4,
+                border: 'none',
+                cursor: 'pointer',
+                backgroundColor: viewMode === 'spread' ? '#27272a' : 'transparent',
+                color: viewMode === 'spread' ? '#ffffff' : '#a1a1aa',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              </svg>
+              <span>2 Halaman (Buku)</span>
+            </button>
+          </div>
+
+          {/* Page Navigation Controls */}
+          {primaryNumPages > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                backgroundColor: '#18181b',
+                border: '1px solid #27272a',
+                borderRadius: 6,
+                padding: '2px 6px',
                 gap: 4,
               }}
             >
               <button
                 type="button"
-                onClick={() => setZoom((z: number) => Math.max(40, z - 15))}
-                title="Perkecil (Zoom Out)"
+                disabled={primaryCurrentPage <= 1}
+                onClick={() => setPrimaryCurrentPage((p) => Math.max(1, p - 1))}
                 style={{
-                  width: 28,
-                  height: 28,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: '#1e293b',
-                  color: '#e2e8f0',
-                  border: '1px solid #475569',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontWeight: 800,
-                  fontSize: 16,
-                  lineHeight: 1,
-                  transition: 'background 0.15s ease',
-                }}
-              >
-                −
-              </button>
-              <button
-                type="button"
-                onClick={() => setZoom(100)}
-                title="Klik untuk reset zoom ke 100%"
-                style={{
-                  minWidth: 54,
-                  height: 28,
-                  padding: '0 8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                   backgroundColor: 'transparent',
-                  color: '#93c5fd',
                   border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 12,
-                  fontWeight: 700,
-                }}
-              >
-                {zoom}%
-              </button>
-              <button
-                type="button"
-                onClick={() => setZoom((z: number) => Math.min(250, z + 15))}
-                title="Perbesar (Zoom In)"
-                style={{
-                  width: 28,
-                  height: 28,
+                  color: primaryCurrentPage <= 1 ? '#52525b' : '#f4f4f5',
+                  cursor: primaryCurrentPage <= 1 ? 'not-allowed' : 'pointer',
+                  padding: '4px',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: '#1e293b',
-                  color: '#e2e8f0',
-                  border: '1px solid #475569',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontWeight: 800,
-                  fontSize: 16,
-                  lineHeight: 1,
-                  transition: 'background 0.15s ease',
                 }}
+                title="Halaman Sebelumnya"
               >
-                +
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
+              </button>
+
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#f4f4f5', minWidth: 64, textAlign: 'center' }}>
+                Hal {primaryCurrentPage} / {primaryNumPages}
+              </span>
+
+              <button
+                type="button"
+                disabled={primaryCurrentPage >= primaryNumPages}
+                onClick={() => setPrimaryCurrentPage((p) => Math.min(primaryNumPages, p + 1))}
+                style={{
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  color: primaryCurrentPage >= primaryNumPages ? '#52525b' : '#f4f4f5',
+                  cursor: primaryCurrentPage >= primaryNumPages ? 'not-allowed' : 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                title="Halaman Selanjutnya"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
               </button>
             </div>
+          )}
 
-            {/* Fullscreen Toggle Button (F11) */}
-            <button
-              type="button"
-              onClick={toggleFullscreen}
-              title={isFullscreen ? 'Keluar dari Mode Layar Penuh (F11)' : 'Masuk ke Mode Layar Penuh (F11)'}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 12px',
-                backgroundColor: isFullscreen ? '#0284c7' : '#1e293b',
-                color: '#ffffff',
-                border: isFullscreen ? '1px solid #38bdf8' : '1px solid #475569',
-                borderRadius: 8,
-                cursor: 'pointer',
-                fontSize: 12,
-                fontWeight: 600,
-                transition: 'all 0.15s ease',
-              }}
-            >
-              {isFullscreen ? (
-                <>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
-                  </svg>
-                  <span>Keluar Layar Penuh</span>
-                </>
-              ) : (
-                <>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-                  </svg>
-                  <span>Layar Penuh</span>
-                </>
-              )}
-              <span style={{ opacity: 0.65, fontSize: 10.5 }}>(F11)</span>
-            </button>
-
-            {/* Close Button */}
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={onClose}
-              style={{
-                backgroundColor: '#334155',
-                color: '#fff',
-                borderColor: '#475569',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 14px',
-                fontWeight: 600,
-              }}
-            >
-              <span>Tutup Pembaca</span>
-              <span style={{ opacity: 0.7, fontSize: 11 }}>(Esc)</span>
-              <span>✕</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Screenshot / Screen Grab Warning Toast */}
-        {screenshotWarning && (
+          {/* Zoom Controls */}
           <div
             style={{
-              position: 'fixed',
-              top: 70,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              backgroundColor: '#dc2626',
-              color: '#ffffff',
-              padding: '12px 24px',
-              borderRadius: 8,
-              boxShadow: '0 10px 30px rgba(220, 38, 38, 0.5)',
-              zIndex: 10001,
               display: 'flex',
               alignItems: 'center',
-              gap: 12,
-              fontWeight: 700,
-              fontSize: 13.5,
-              animation: 'slideDown 0.3s ease-out',
+              backgroundColor: '#18181b',
+              border: '1px solid #27272a',
+              borderRadius: 6,
+              padding: '2px 4px',
+              gap: 2,
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-              <line x1="12" y1="9" x2="12" y2="13" />
-              <line x1="12" y1="17" x2="12.01" y2="17" />
-            </svg>
-            <span>{screenshotWarning}</span>
+            <button
+              type="button"
+              onClick={() => setZoom((z) => Math.max(50, z - 15))}
+              style={{
+                backgroundColor: 'transparent',
+                border: 'none',
+                color: '#f4f4f5',
+                cursor: 'pointer',
+                padding: '4px 6px',
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+              title="Perkecil (-)"
+            >
+              −
+            </button>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#f4f4f5', minWidth: 38, textAlign: 'center' }}>
+              {zoom}%
+            </span>
+            <button
+              type="button"
+              onClick={() => setZoom((z) => Math.min(200, z + 15))}
+              style={{
+                backgroundColor: 'transparent',
+                border: 'none',
+                color: '#f4f4f5',
+                cursor: 'pointer',
+                padding: '4px 6px',
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+              title="Perbesar (+)"
+            >
+              +
+            </button>
           </div>
-        )}
 
-        {/* PDF Viewport & Watermark Area */}
-        {/* PDF Viewport & Watermark Area */}
+          {/* Fullscreen Mode Button */}
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              backgroundColor: '#18181b',
+              color: '#f4f4f5',
+              border: '1px solid #27272a',
+              borderRadius: 6,
+              padding: '5px 10px',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+            title="Layar Penuh (F11)"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+            </svg>
+            <span>{isFullscreen ? 'Keluar Penuh' : 'Layar Penuh'}</span>
+          </button>
+        </div>
+
+        {/* Right: Close Reader Button */}
+        <div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              backgroundColor: '#18181b',
+              color: '#ffffff',
+              border: '1px solid #27272a',
+              borderRadius: 6,
+              padding: '5px 12px',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#ef4444';
+              e.currentTarget.style.borderColor = '#dc2626';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#18181b';
+              e.currentTarget.style.borderColor = '#27272a';
+            }}
+          >
+            <span>Tutup Pembaca</span>
+            <span style={{ fontSize: 10, opacity: 0.7 }}>(Esc)</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Main Canvas Viewport Area */}
+      <div
+        style={{
+          flex: 1,
+          position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          backgroundColor: '#09090b',
+        }}
+      >
+        {/* Scrollable Canvas Container */}
         <div
-          ref={viewerContainerRef}
+          className="custom-scrollbar"
           style={{
             flex: 1,
-            position: 'relative',
-            overflow: 'auto',
+            overflowY: 'auto',
+            overflowX: 'auto',
             display: 'flex',
             justifyContent: 'center',
-            alignItems: 'stretch',
-            backgroundColor: '#1e293b',
-            padding: '12px 16px',
+            alignItems: 'flex-start',
+            backgroundColor: '#09090b',
+            padding: '24px 16px',
           }}
         >
-          {/* Inner Document Canvas Container with DRM Blur Filter */}
+          {/* Inner Document Canvas Container with DRM Blur & Blanking Filter */}
           <div
             style={{
               display: 'flex',
               justifyContent: 'center',
-              alignItems: 'stretch',
+              alignItems: 'flex-start',
               minHeight: '100%',
               width: '100%',
-              filter: !isWindowFocused ? 'blur(20px) saturate(0.2)' : 'none',
+              filter: !isWindowFocused ? 'blur(36px) saturate(0)' : 'none',
+              opacity: !isWindowFocused ? 0.05 : 1,
               pointerEvents: !isWindowFocused ? 'none' : 'auto',
-              transition: 'filter 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+              transition: 'filter 0.15s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s ease',
             }}
           >
             {viewMode === 'single' ? (
-              /* Single Page View */
+              /* Single Page Canvas View */
               <div
                 style={{
                   position: 'relative',
-                  width: `${Math.round(960 * (zoom / 100))}px`,
-                  minWidth: '320px',
-                  maxWidth: 'none',
-                  minHeight: '100%',
                   backgroundColor: '#ffffff',
-                  boxShadow: '0 10px 40px rgba(0, 0, 0, 0.6)',
+                  boxShadow: '0 12px 48px rgba(0, 0, 0, 0.75)',
                   borderRadius: 4,
                   overflow: 'hidden',
                   flexShrink: 0,
-                  transition: 'width 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  minWidth: 320,
+                  minHeight: 480,
                 }}
               >
-                <iframe
-                  src={`${mainStreamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-                  title="PDF Reader"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    border: 'none',
-                    display: 'block',
-                  }}
-                />
+                {primaryLoading && (
+                  <div style={{ padding: '60px 40px', color: '#71717a', textAlign: 'center', fontSize: 13 }}>
+                    <div style={{ width: 24, height: 24, border: '2px solid #27272a', borderTopColor: '#ffffff', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+                    Memuat naskah terproteksi...
+                  </div>
+                )}
 
-                {/* Dynamic Multi-Line High-Density Watermark Overlay */}
+                {primaryError ? (
+                  /* Fallback Iframe if PDF.js decoding fails */
+                  <iframe
+                    src={`${mainStreamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                    title="PDF Reader Fallback"
+                    style={{
+                      width: `${Math.round(960 * (zoom / 100))}px`,
+                      height: '85vh',
+                      border: 'none',
+                      display: 'block',
+                    }}
+                  />
+                ) : (
+                  /* Primary HTML5 Canvas */
+                  <canvas ref={primaryCanvasRef} style={{ display: primaryLoading ? 'none' : 'block' }} />
+                )}
+
+                {/* High-Density DRM Legal Watermark Grid */}
                 <div
                   style={{
                     position: 'absolute',
@@ -783,7 +1072,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                     display: 'grid',
                     gridTemplateColumns: 'repeat(2, 1fr)',
                     gridTemplateRows: 'repeat(5, 1fr)',
-                    opacity: 0.22,
+                    opacity: 0.28,
                     zIndex: 40,
                     userSelect: 'none',
                     padding: '20px 0',
@@ -801,16 +1090,16 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                       <div
                         style={{
                           transform: 'rotate(-25deg)',
-                          fontFamily: 'var(--font-mono)',
+                          fontFamily: 'var(--font-mono, monospace)',
                           fontSize: '11px',
                           fontWeight: 700,
                           color: '#0f172a',
                           textAlign: 'center',
                           lineHeight: 1.35,
-                          border: '1px dashed rgba(15, 23, 42, 0.5)',
+                          border: '1px dashed rgba(15, 23, 42, 0.6)',
                           padding: '6px 14px',
                           borderRadius: 6,
-                          backgroundColor: 'rgba(255, 255, 255, 0.55)',
+                          backgroundColor: 'rgba(255, 255, 255, 0.65)',
                           boxShadow: '0 2px 6px rgba(0, 0, 0, 0.05)',
                         }}
                       >
@@ -833,15 +1122,10 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
               <div
                 style={{
                   position: 'relative',
-                  width: `${Math.round(1760 * (zoom / 100))}px`,
-                  minWidth: '640px',
-                  maxWidth: 'none',
-                  minHeight: '100%',
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 12,
+                  display: 'flex',
+                  justifyContent: 'center',
+                  gap: 16,
                   flexShrink: 0,
-                  transition: 'width 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
                 }}
               >
                 {/* Left Spread Pane (Primary Document) */}
@@ -849,51 +1133,41 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                   style={{
                     position: 'relative',
                     backgroundColor: '#ffffff',
-                    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.6)',
+                    boxShadow: '0 12px 48px rgba(0, 0, 0, 0.75)',
                     borderRadius: '4px 0 0 4px',
                     overflow: 'hidden',
-                    borderRight: '2px solid #cbd5e1',
                     display: 'flex',
                     flexDirection: 'column',
                   }}
                 >
-                  {/* Left Pane Header Banner */}
                   <div
                     style={{
-                      backgroundColor: '#0f172a',
-                      color: '#93c5fd',
+                      backgroundColor: '#121215',
+                      color: '#f4f4f5',
                       padding: '6px 12px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      borderBottom: '1px solid #334155',
+                      borderBottom: '1px solid #27272a',
                       fontSize: 11,
                       fontWeight: 700,
                       zIndex: 30,
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
-                      <span style={{ backgroundColor: '#1e40af', color: '#fff', padding: '1px 6px', borderRadius: 3, fontSize: 10 }}>
+                      <span style={{ backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#fff', padding: '1px 6px', borderRadius: 3, fontSize: 10 }}>
                         HALAMAN KIRI (UTAMA)
                       </span>
-                      <span style={{ color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <span style={{ color: '#f4f4f5', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {articleTitle}
                       </span>
                     </div>
                   </div>
 
-                  <div style={{ flex: 1, position: 'relative' }}>
-                    <iframe
-                      src={`${mainStreamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-                      title="PDF Reader - Left Pane"
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        border: 'none',
-                        display: 'block',
-                      }}
-                    />
-                    {/* Left Watermark */}
+                  <div style={{ position: 'relative', minWidth: 300, minHeight: 450, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <canvas ref={primaryCanvasRef} style={{ display: primaryLoading ? 'none' : 'block' }} />
+
+                    {/* Watermark Left */}
                     <div
                       style={{
                         position: 'absolute',
@@ -902,7 +1176,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                         display: 'grid',
                         gridTemplateColumns: '1fr',
                         gridTemplateRows: 'repeat(5, 1fr)',
-                        opacity: 0.22,
+                        opacity: 0.28,
                         zIndex: 40,
                         userSelect: 'none',
                         padding: '20px 0',
@@ -913,19 +1187,19 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                           <div
                             style={{
                               transform: 'rotate(-25deg)',
-                              fontFamily: 'var(--font-mono)',
+                              fontFamily: 'var(--font-mono, monospace)',
                               fontSize: '11px',
                               fontWeight: 700,
                               color: '#0f172a',
                               textAlign: 'center',
                               lineHeight: 1.35,
-                              border: '1px dashed rgba(15, 23, 42, 0.5)',
+                              border: '1px dashed rgba(15, 23, 42, 0.6)',
                               padding: '6px 14px',
                               borderRadius: 6,
-                              backgroundColor: 'rgba(255, 255, 255, 0.55)',
+                              backgroundColor: 'rgba(255, 255, 255, 0.65)',
                             }}
                           >
-                            <div style={{ fontSize: '10px', color: '#1e40af' }}>UPT Perpustakaan dan Layanan Digital UMS</div>
+                            <div style={{ fontSize: '10px', color: '#0f172a' }}>UPT Perpustakaan UMS</div>
                             <div style={{ color: '#0f172a', fontWeight: 800 }}>
                               {currentSession?.patron_name || 'PEMUSTAKA'} ({currentSession?.patron_nim || 'UMS'})
                             </div>
@@ -942,24 +1216,22 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                   style={{
                     position: 'relative',
                     backgroundColor: '#ffffff',
-                    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.6)',
+                    boxShadow: '0 12px 48px rgba(0, 0, 0, 0.75)',
                     borderRadius: '0 4px 4px 0',
                     overflow: 'hidden',
-                    borderLeft: '2px solid #cbd5e1',
                     display: 'flex',
                     flexDirection: 'column',
                   }}
                 >
-                  {/* Right Pane Header Banner with Document Switcher Button */}
                   <div
                     style={{
-                      backgroundColor: '#0f172a',
-                      color: '#93c5fd',
+                      backgroundColor: '#121215',
+                      color: '#f4f4f5',
                       padding: '6px 12px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      borderBottom: '1px solid #334155',
+                      borderBottom: '1px solid #27272a',
                       fontSize: 11,
                       fontWeight: 700,
                       zIndex: 30,
@@ -967,10 +1239,10 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', flex: 1 }}>
-                      <span style={{ backgroundColor: '#0284c7', color: '#fff', padding: '1px 6px', borderRadius: 3, fontSize: 10 }}>
+                      <span style={{ backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#fff', padding: '1px 6px', borderRadius: 3, fontSize: 10 }}>
                         HALAMAN KANAN
                       </span>
-                      <span style={{ color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <span style={{ color: '#f4f4f5', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {secondaryDoc ? `${secondaryDoc.filename || secondaryDoc.title}` : articleTitle}
                       </span>
                     </div>
@@ -980,43 +1252,36 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                       <button
                         type="button"
                         onClick={() => setIsDocPickerOpen(true)}
-                        title="Pilih dokumen / bab lain untuk dibandingkan berdampingan"
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: 5,
-                          backgroundColor: '#2563eb',
+                          backgroundColor: '#18181b',
                           color: '#ffffff',
-                          border: '1px solid #60a5fa',
-                          borderRadius: 5,
-                          padding: '3px 8px',
+                          border: '1px solid #3f3f46',
+                          borderRadius: 6,
+                          padding: '3px 9px',
                           fontSize: 11,
                           fontWeight: 700,
                           cursor: 'pointer',
                           whiteSpace: 'nowrap',
-                          boxShadow: '0 2px 4px rgba(37, 99, 235, 0.3)',
+                          transition: 'all 0.15s ease',
                         }}
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                         </svg>
                         <span>Pilih PDF Kanan</span>
-                        {currentArticleDetail?.documents && currentArticleDetail.documents.length > 1 && (
-                          <span style={{ backgroundColor: '#1d4ed8', padding: '0 4px', borderRadius: 3, fontSize: 9.5 }}>
-                            {currentArticleDetail.documents.length} File
-                          </span>
-                        )}
                       </button>
 
                       {secondaryDoc && (
                         <button
                           type="button"
                           onClick={() => setSecondaryDoc(null)}
-                          title="Kembalikan ke dokumen asal yang sama"
                           style={{
-                            backgroundColor: '#334155',
-                            color: '#cbd5e1',
-                            border: '1px solid #475569',
+                            backgroundColor: '#18181b',
+                            color: '#a1a1aa',
+                            border: '1px solid #27272a',
                             borderRadius: 5,
                             padding: '3px 6px',
                             fontSize: 10.5,
@@ -1029,18 +1294,10 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                     </div>
                   </div>
 
-                  <div style={{ flex: 1, position: 'relative' }}>
-                    <iframe
-                      src={`${secondaryStreamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-                      title="PDF Reader - Right Pane"
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        border: 'none',
-                        display: 'block',
-                      }}
-                    />
-                    {/* Right Watermark */}
+                  <div style={{ position: 'relative', minWidth: 300, minHeight: 450, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <canvas ref={secondaryCanvasRef} style={{ display: secondaryLoading ? 'none' : 'block' }} />
+
+                    {/* Watermark Right */}
                     <div
                       style={{
                         position: 'absolute',
@@ -1049,7 +1306,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                         display: 'grid',
                         gridTemplateColumns: '1fr',
                         gridTemplateRows: 'repeat(5, 1fr)',
-                        opacity: 0.22,
+                        opacity: 0.28,
                         zIndex: 40,
                         userSelect: 'none',
                         padding: '20px 0',
@@ -1060,19 +1317,19 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                           <div
                             style={{
                               transform: 'rotate(-25deg)',
-                              fontFamily: 'var(--font-mono)',
+                              fontFamily: 'var(--font-mono, monospace)',
                               fontSize: '11px',
                               fontWeight: 700,
                               color: '#0f172a',
                               textAlign: 'center',
                               lineHeight: 1.35,
-                              border: '1px dashed rgba(15, 23, 42, 0.5)',
+                              border: '1px dashed rgba(15, 23, 42, 0.6)',
                               padding: '6px 14px',
                               borderRadius: 6,
-                              backgroundColor: 'rgba(255, 255, 255, 0.55)',
+                              backgroundColor: 'rgba(255, 255, 255, 0.65)',
                             }}
                           >
-                            <div style={{ fontSize: '10px', color: '#1e40af' }}>UPT Perpustakaan dan Layanan Digital UMS</div>
+                            <div style={{ fontSize: '10px', color: '#0f172a' }}>UPT Perpustakaan UMS</div>
                             <div style={{ color: '#0f172a', fontWeight: 800 }}>
                               {currentSession?.patron_name || 'PEMUSTAKA'} ({currentSession?.patron_nim || 'UMS'})
                             </div>
@@ -1094,7 +1351,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
               style={{
                 position: 'fixed',
                 inset: 0,
-                backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                backgroundColor: 'rgba(0, 0, 0, 0.85)',
                 backdropFilter: 'blur(8px)',
                 zIndex: 10002,
                 display: 'flex',
@@ -1110,10 +1367,10 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                   width: '100%',
                   maxWidth: 680,
                   maxHeight: '85vh',
-                  backgroundColor: '#0f172a',
-                  border: '1px solid #334155',
+                  backgroundColor: '#121215',
+                  border: '1px solid #27272a',
                   borderRadius: 12,
-                  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
+                  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.9)',
                   display: 'flex',
                   flexDirection: 'column',
                   overflow: 'hidden',
@@ -1125,7 +1382,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                 <div
                   style={{
                     padding: '16px 20px',
-                    borderBottom: '1px solid #334155',
+                    borderBottom: '1px solid #27272a',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -1137,7 +1394,8 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                         width: 34,
                         height: 34,
                         borderRadius: 8,
-                        backgroundColor: '#1d4ed8',
+                        backgroundColor: '#18181b',
+                        border: '1px solid #27272a',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -1149,10 +1407,10 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                       </svg>
                     </div>
                     <div>
-                      <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
+                      <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f4f4f5' }}>
                         Pilih PDF Halaman Kanan (Mode 2 Halaman)
                       </h4>
-                      <p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>
+                      <p style={{ margin: 0, fontSize: 12, color: '#a1a1aa' }}>
                         Bandingkan bab atau naskah lain secara berdampingan
                       </p>
                     </div>
@@ -1164,7 +1422,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: '#94a3b8',
+                      color: '#a1a1aa',
                       fontSize: 18,
                       cursor: 'pointer',
                       padding: 4,
@@ -1179,8 +1437,8 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                 <div
                   style={{
                     display: 'flex',
-                    borderBottom: '1px solid #334155',
-                    backgroundColor: '#1e293b',
+                    borderBottom: '1px solid #27272a',
+                    backgroundColor: '#18181b',
                     padding: '0 16px',
                     gap: 8,
                   }}
@@ -1194,8 +1452,8 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                       fontWeight: 600,
                       backgroundColor: 'transparent',
                       border: 'none',
-                      borderBottom: docPickerTab === 'article_docs' ? '2px solid #38bdf8' : '2px solid transparent',
-                      color: docPickerTab === 'article_docs' ? '#38bdf8' : '#94a3b8',
+                      borderBottom: docPickerTab === 'article_docs' ? '2px solid #ffffff' : '2px solid transparent',
+                      color: docPickerTab === 'article_docs' ? '#ffffff' : '#a1a1aa',
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
                     }}
@@ -1212,8 +1470,8 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                       fontWeight: 600,
                       backgroundColor: 'transparent',
                       border: 'none',
-                      borderBottom: docPickerTab === 'recent_reads' ? '2px solid #38bdf8' : '2px solid transparent',
-                      color: docPickerTab === 'recent_reads' ? '#38bdf8' : '#94a3b8',
+                      borderBottom: docPickerTab === 'recent_reads' ? '2px solid #ffffff' : '2px solid transparent',
+                      color: docPickerTab === 'recent_reads' ? '#ffffff' : '#a1a1aa',
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
                     }}
@@ -1230,8 +1488,8 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                       fontWeight: 600,
                       backgroundColor: 'transparent',
                       border: 'none',
-                      borderBottom: docPickerTab === 'catalog_search' ? '2px solid #38bdf8' : '2px solid transparent',
-                      color: docPickerTab === 'catalog_search' ? '#38bdf8' : '#94a3b8',
+                      borderBottom: docPickerTab === 'catalog_search' ? '2px solid #ffffff' : '2px solid transparent',
+                      color: docPickerTab === 'catalog_search' ? '#ffffff' : '#a1a1aa',
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
                     }}
@@ -1246,12 +1504,12 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                   {docPickerTab === 'article_docs' && (
                     <div>
                       {loadingArticleDetail ? (
-                        <div style={{ textAlign: 'center', padding: '30px 0', color: '#94a3b8', fontSize: 13 }}>
+                        <div style={{ textAlign: 'center', padding: '30px 0', color: '#a1a1aa', fontSize: 13 }}>
                           Memuat daftar berkas dokumen naskah...
                         </div>
                       ) : currentArticleDetail?.documents && currentArticleDetail.documents.length > 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>
+                          <div style={{ fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>
                             Pilih berkas dari naskah <strong>{articleTitle}</strong>:
                           </div>
                           {currentArticleDetail.documents.map((docItem) => {
@@ -1274,8 +1532,8 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                   alignItems: 'center',
                                   justifyContent: 'space-between',
                                   padding: '12px 16px',
-                                  backgroundColor: isCurrentlySecondary ? '#1e3a5f' : '#1e293b',
-                                  border: isCurrentlySecondary ? '1px solid #38bdf8' : '1px solid #334155',
+                                  backgroundColor: isCurrentlySecondary ? '#27272a' : '#18181b',
+                                  border: isCurrentlySecondary ? '1px solid #52525b' : '1px solid #27272a',
                                   borderRadius: 8,
                                   cursor: 'pointer',
                                   transition: 'all 0.15s ease',
@@ -1287,22 +1545,23 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                       width: 32,
                                       height: 32,
                                       borderRadius: 6,
-                                      backgroundColor: '#dc2626',
-                                      color: '#fff',
+                                      backgroundColor: '#27272a',
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'center',
-                                      fontSize: 10,
-                                      fontWeight: 800,
+                                      color: '#ef4444',
                                     }}
                                   >
-                                    PDF
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                      <polyline points="14 2 14 8 20 8" />
+                                    </svg>
                                   </div>
                                   <div>
-                                    <div style={{ fontSize: 13.5, fontWeight: 600, color: '#f8fafc' }}>
+                                    <div style={{ fontSize: 13.5, fontWeight: 600, color: '#f4f4f5' }}>
                                       {docItem.filename || `Berkas Dokumen #${docItem.docid}`}
                                     </div>
-                                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                                    <div style={{ fontSize: 11, color: '#a1a1aa', marginTop: 2 }}>
                                       Format: {docItem.format || 'application/pdf'} • Ukuran: {docItem.filesize ? `${Math.round(docItem.filesize / 1024)} KB` : 'PDF'}
                                     </div>
                                   </div>
@@ -1310,21 +1569,21 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
 
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                   {isCurrentlyPrimary && (
-                                    <span style={{ fontSize: 10.5, backgroundColor: '#1e40af', color: '#fff', padding: '2px 8px', borderRadius: 4 }}>
+                                    <span style={{ fontSize: 10.5, backgroundColor: '#27272a', border: '1px solid #3f3f46', color: '#fff', padding: '2px 8px', borderRadius: 4 }}>
                                       Aktif di Kiri
                                     </span>
                                   )}
                                   {isCurrentlySecondary && (
-                                    <span style={{ fontSize: 10.5, backgroundColor: '#0284c7', color: '#fff', padding: '2px 8px', borderRadius: 4 }}>
+                                    <span style={{ fontSize: 10.5, backgroundColor: '#3f3f46', color: '#fff', padding: '2px 8px', borderRadius: 4 }}>
                                       Aktif di Kanan
                                     </span>
                                   )}
                                   <button
                                     type="button"
                                     style={{
-                                      backgroundColor: isCurrentlySecondary ? '#38bdf8' : '#334155',
-                                      color: isCurrentlySecondary ? '#0f172a' : '#ffffff',
-                                      border: 'none',
+                                      backgroundColor: isCurrentlySecondary ? '#ffffff' : '#27272a',
+                                      color: isCurrentlySecondary ? '#09090b' : '#ffffff',
+                                      border: isCurrentlySecondary ? 'none' : '1px solid #3f3f46',
                                       borderRadius: 6,
                                       padding: '5px 12px',
                                       fontSize: 12,
@@ -1340,8 +1599,8 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                           })}
                         </div>
                       ) : (
-                        <div style={{ textAlign: 'center', padding: '30px 0', color: '#94a3b8', fontSize: 13 }}>
-                          Naskah ini hanya memiliki 1 berkas dokumen. Anda dapat memilih dari tab <strong>Riwayat Baca</strong> atau <strong>Cari Naskah Lain</strong> untuk membandingkan antar-naskah.
+                        <div style={{ textAlign: 'center', padding: '30px 0', color: '#a1a1aa', fontSize: 13 }}>
+                          Naskah ini hanya memiliki 1 berkas dokumen.
                         </div>
                       )}
                     </div>
@@ -1352,7 +1611,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                     <div>
                       {recentReadsList.length > 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>
+                          <div style={{ fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>
                             Pilih naskah yang baru saja Anda buka untuk dimuat di halaman kanan:
                           </div>
                           {recentReadsList.map((item) => (
@@ -1378,18 +1637,18 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
                                 padding: '12px 16px',
-                                backgroundColor: secondaryDoc?.articleId === item.eprintid ? '#1e3a5f' : '#1e293b',
-                                border: secondaryDoc?.articleId === item.eprintid ? '1px solid #38bdf8' : '1px solid #334155',
+                                backgroundColor: secondaryDoc?.articleId === item.eprintid ? '#27272a' : '#18181b',
+                                border: secondaryDoc?.articleId === item.eprintid ? '1px solid #52525b' : '1px solid #27272a',
                                 borderRadius: 8,
                                 cursor: 'pointer',
                                 transition: 'all 0.15s ease',
                               }}
                             >
                               <div style={{ overflow: 'hidden', paddingRight: 12 }}>
-                                <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc', marginBottom: 3 }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: '#f4f4f5', marginBottom: 3 }}>
                                   {item.title}
                                 </div>
-                                <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                                <div style={{ fontSize: 11, color: '#a1a1aa' }}>
                                   {item.creators ? `Penulis: ${item.creators}` : ''} {item.year ? `(${item.year})` : ''} • Dibuka: {item.openedAt}
                                 </div>
                               </div>
@@ -1397,9 +1656,9 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                               <button
                                 type="button"
                                 style={{
-                                  backgroundColor: secondaryDoc?.articleId === item.eprintid ? '#38bdf8' : '#2563eb',
-                                  color: secondaryDoc?.articleId === item.eprintid ? '#0f172a' : '#ffffff',
-                                  border: 'none',
+                                  backgroundColor: secondaryDoc?.articleId === item.eprintid ? '#ffffff' : '#27272a',
+                                  color: secondaryDoc?.articleId === item.eprintid ? '#09090b' : '#ffffff',
+                                  border: secondaryDoc?.articleId === item.eprintid ? 'none' : '1px solid #3f3f46',
                                   borderRadius: 6,
                                   padding: '5px 12px',
                                   fontSize: 12,
@@ -1414,7 +1673,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                           ))}
                         </div>
                       ) : (
-                        <div style={{ textAlign: 'center', padding: '30px 0', color: '#94a3b8', fontSize: 13 }}>
+                        <div style={{ textAlign: 'center', padding: '30px 0', color: '#a1a1aa', fontSize: 13 }}>
                           Belum ada riwayat baca dalam sesi ini.
                         </div>
                       )}
@@ -1433,8 +1692,8 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                           style={{
                             width: '100%',
                             padding: '10px 14px',
-                            backgroundColor: '#1e293b',
-                            border: '1px solid #475569',
+                            backgroundColor: '#18181b',
+                            border: '1px solid #27272a',
                             borderRadius: 8,
                             color: '#ffffff',
                             fontSize: 13,
@@ -1444,7 +1703,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                       </div>
 
                       {searchCatalogLoading && (
-                        <div style={{ textAlign: 'center', padding: '20px 0', color: '#94a3b8', fontSize: 12.5 }}>
+                        <div style={{ textAlign: 'center', padding: '20px 0', color: '#a1a1aa', fontSize: 12.5 }}>
                           Mencari di katalog...
                         </div>
                       )}
@@ -1458,16 +1717,16 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                               <div
                                 key={art.eprintid}
                                 style={{
-                                  backgroundColor: '#1e293b',
-                                  border: '1px solid #334155',
+                                  backgroundColor: '#18181b',
+                                  border: '1px solid #27272a',
                                   borderRadius: 8,
                                   padding: '10px 14px',
                                 }}
                               >
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', border: 'none', justifyContent: 'space-between', gap: 10 }}>
                                   <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>{art.title}</div>
-                                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#f4f4f5' }}>{art.title}</div>
+                                    <div style={{ fontSize: 11, color: '#a1a1aa', marginTop: 2 }}>
                                       {art.creators?.join(', ')} • {art.date_year || ''}
                                     </div>
                                   </div>
@@ -1476,9 +1735,9 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                     type="button"
                                     onClick={() => handleExpandSearchArticle(art.eprintid)}
                                     style={{
-                                      backgroundColor: '#334155',
-                                      color: '#93c5fd',
-                                      border: '1px solid #475569',
+                                      backgroundColor: '#27272a',
+                                      color: '#f4f4f5',
+                                      border: '1px solid #3f3f46',
                                       borderRadius: 6,
                                       padding: '4px 10px',
                                       fontSize: 11.5,
@@ -1492,9 +1751,9 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                 </div>
 
                                 {isExpanded && (
-                                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed #334155' }}>
+                                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed #27272a' }}>
                                     {loadingSearchArticleDoc === art.eprintid ? (
-                                      <div style={{ fontSize: 12, color: '#94a3b8' }}>Memuat berkas...</div>
+                                      <div style={{ fontSize: 12, color: '#a1a1aa' }}>Memuat berkas...</div>
                                     ) : fullDetail?.documents && fullDetail.documents.length > 0 ? (
                                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                         {fullDetail.documents.map((d) => (
@@ -1504,7 +1763,8 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                               display: 'flex',
                                               alignItems: 'center',
                                               justifyContent: 'space-between',
-                                              backgroundColor: '#0f172a',
+                                              backgroundColor: '#121215',
+                                              border: '1px solid #27272a',
                                               padding: '6px 10px',
                                               borderRadius: 6,
                                             }}
@@ -1528,9 +1788,9 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                                 setIsDocPickerOpen(false);
                                               }}
                                               style={{
-                                                backgroundColor: '#2563eb',
+                                                backgroundColor: '#27272a',
                                                 color: '#fff',
-                                                border: 'none',
+                                                border: '1px solid #3f3f46',
                                                 borderRadius: 4,
                                                 padding: '3px 8px',
                                                 fontSize: 11,
@@ -1556,9 +1816,9 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                                           setIsDocPickerOpen(false);
                                         }}
                                         style={{
-                                          backgroundColor: '#2563eb',
+                                          backgroundColor: '#27272a',
                                           color: '#fff',
-                                          border: 'none',
+                                          border: '1px solid #3f3f46',
                                           borderRadius: 4,
                                           padding: '4px 10px',
                                           fontSize: 11.5,
@@ -1576,12 +1836,6 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                           })}
                         </div>
                       )}
-
-                      {!searchCatalogLoading && searchCatalogQuery.trim() && searchCatalogResults.length === 0 && (
-                        <div style={{ textAlign: 'center', padding: '20px 0', color: '#94a3b8', fontSize: 12.5 }}>
-                          Tidak ditemukan naskah dengan kata kunci &quot;{searchCatalogQuery}&quot;.
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -1590,21 +1844,29 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                 <div
                   style={{
                     padding: '12px 20px',
-                    borderTop: '1px solid #334155',
-                    backgroundColor: '#1e293b',
+                    borderTop: '1px solid #27272a',
+                    backgroundColor: '#121215',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                   }}
                 >
-                  <div style={{ fontSize: 11.5, color: '#94a3b8' }}>
+                  <div style={{ fontSize: 11.5, color: '#a1a1aa' }}>
                     Kedua dokumen dilindungi tanda air dinamis & pemantauan sesi aktif.
                   </div>
                   <button
                     type="button"
                     onClick={() => setIsDocPickerOpen(false)}
-                    className="btn btn-secondary btn-sm"
-                    style={{ backgroundColor: '#334155', color: '#fff', borderColor: '#475569' }}
+                    style={{
+                      backgroundColor: '#18181b',
+                      color: '#f4f4f5',
+                      border: '1px solid #27272a',
+                      borderRadius: 6,
+                      padding: '5px 14px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
                   >
                     Tutup
                   </button>
@@ -1616,12 +1878,16 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
           {/* Anti-Snipping Tool / Window Unfocused Privacy Auto-Shield Curtain */}
           {!isWindowFocused && (
             <div
-              onClick={() => setIsWindowFocused(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleResumeFocus();
+              }}
               style={{
                 position: 'absolute',
                 inset: 0,
-                backdropFilter: 'blur(36px)',
-                backgroundColor: 'rgba(9, 14, 26, 0.92)',
+                backdropFilter: 'blur(40px)',
+                backgroundColor: 'rgba(9, 9, 11, 0.96)',
                 zIndex: 90,
                 display: 'flex',
                 flexDirection: 'column',
@@ -1641,14 +1907,14 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                   width: 68,
                   height: 68,
                   borderRadius: '50%',
-                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                  border: '2px solid rgba(239, 68, 68, 0.5)',
+                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                  border: '2px solid rgba(239, 68, 68, 0.4)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   marginBottom: 18,
                   color: '#f87171',
-                  boxShadow: '0 0 24px rgba(239, 68, 68, 0.25)',
+                  boxShadow: '0 0 24px rgba(239, 68, 68, 0.2)',
                 }}
               >
                 <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1685,7 +1951,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                   fontWeight: 800,
                   color: '#ffffff',
                   marginBottom: 10,
-                  fontFamily: 'var(--font-heading)',
+                  fontFamily: 'var(--font-heading, sans-serif)',
                   letterSpacing: '-0.01em',
                 }}
               >
@@ -1697,7 +1963,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                   maxWidth: 480,
                   fontSize: 13,
                   lineHeight: 1.6,
-                  color: '#94a3b8',
+                  color: '#a1a1aa',
                   marginBottom: 24,
                 }}
               >
@@ -1707,10 +1973,10 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
               <button
                 type="button"
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
-                  setIsWindowFocused(true);
+                  handleResumeFocus();
                 }}
-                className="btn btn-primary"
                 style={{
                   padding: '11px 26px',
                   fontSize: 13.5,
@@ -1718,7 +1984,21 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 8,
-                  boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)',
+                  backgroundColor: '#27272a',
+                  color: '#ffffff',
+                  border: '1px solid #3f3f46',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.6)',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#3f3f46';
+                  e.currentTarget.style.borderColor = '#52525b';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#27272a';
+                  e.currentTarget.style.borderColor = '#3f3f46';
                 }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1728,7 +2008,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
                 <span>Fokus Kembali & Lanjutkan Membaca</span>
               </button>
 
-              <div style={{ marginTop: 14, fontSize: 11.5, color: '#64748b' }}>
+              <div style={{ marginTop: 14, fontSize: 11.5, color: '#71717a' }}>
                 (atau klik di sembarang tempat pada layar ini)
               </div>
             </div>
@@ -1738,13 +2018,13 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
         {/* Security Notice Footer */}
         <div
           style={{
-            backgroundColor: '#0f172a',
-            color: '#94a3b8',
+            backgroundColor: '#121215',
+            color: '#a1a1aa',
             fontSize: 11,
-            fontFamily: 'var(--font-sans)',
+            fontFamily: 'var(--font-sans, sans-serif)',
             padding: '6px 20px',
             textAlign: 'center',
-            borderTop: '1px solid #334155',
+            borderTop: '1px solid #27272a',
           }}
         >
           UPT Perpustakaan dan Layanan Digital Universitas Muhammadiyah Surakarta — Seluruh aktivitas membaca naskah tercatat dalam Log Audit institusional (NIM: {currentSession?.patron_nim || 'Guest'} • Token: {currentSession?.token_code || '-'}).

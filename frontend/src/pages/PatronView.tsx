@@ -1017,25 +1017,79 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
               </span>
             </div>
 
-            <div
-              style={{
-                fontSize: 11.5,
-                color: 'var(--color-primary)',
-                backgroundColor: 'var(--color-surface-subtle)',
-                border: '1px solid var(--color-border)',
-                padding: '3px 10px',
-                borderRadius: 9999,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                fontWeight: 600,
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <polyline points="19 12 12 19 5 12" />
-              </svg>
-              <span>Urutan: <strong>Terbaru Diunggah</strong></span>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: 'var(--color-primary)',
+                  backgroundColor: 'var(--color-surface-subtle)',
+                  border: '1px solid var(--color-border)',
+                  padding: '3px 10px',
+                  borderRadius: 9999,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  fontWeight: 600,
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <polyline points="19 12 12 19 5 12" />
+                </svg>
+                <span>Urutan: <strong>Terbaru Diunggah</strong></span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => loadArticles(currentPage, pageSize)}
+                disabled={loading}
+                title="Segarkan / Reload data katalog naskah"
+                aria-label="Segarkan data naskah"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  color: 'var(--color-primary)',
+                  backgroundColor: 'var(--color-surface-subtle)',
+                  border: '1px solid var(--color-border)',
+                  padding: '3px 10px',
+                  borderRadius: 9999,
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                  opacity: loading ? 0.7 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.backgroundColor = 'var(--color-surface)';
+                    e.currentTarget.style.borderColor = 'var(--color-primary)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.backgroundColor = 'var(--color-surface-subtle)';
+                    e.currentTarget.style.borderColor = 'var(--color-border)';
+                  }
+                }}
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{
+                    animation: loading ? 'spin 1s linear infinite' : 'none',
+                  }}
+                >
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+                </svg>
+                <span>{loading ? 'Memuat...' : 'Refresh'}</span>
+              </button>
             </div>
           </div>
 

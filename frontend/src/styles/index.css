@@ -3259,3 +3259,37 @@ a:hover {
   border-radius: 50%;
   background-color: var(--color-accent, #f59e0b);
 }
+
+/* ==========================================================================
+   DRM Intellectual Property & Anti-Copy Protection Rules
+   ========================================================================== */
+.academic-card,
+.academic-card-abstract,
+.academic-card-title,
+.academic-card-authors,
+.modal-dialog,
+.modal-body,
+.modal-content,
+.article-abstract-protected,
+.protected-academic-content,
+[data-protected="true"] {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+}
+
+@media print {
+  body * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  body::after {
+    content: "DOKUMEN DILINDUNGI HAK CIPTA UPT PERPUSTAKAAN UMS — PENCETAKAN DINONAKTIFKAN";
+    display: block !important;
+    font-size: 24pt;
+    text-align: center;
+    padding-top: 200px;
+    color: #000000;
+  }
+}

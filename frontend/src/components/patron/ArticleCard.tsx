@@ -34,6 +34,14 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect }) =
     <article
       className={`academic-card ${tierClass}`}
       aria-labelledby={`article-heading-${article.eprintid}`}
+      onContextMenu={(e) => e.preventDefault()}
+      onCopy={(e) => {
+        e.preventDefault();
+        try {
+          navigator.clipboard?.writeText?.('DOKUMEN INI DILINDUNGI HAK CIPTA UPT PERPUSTAKAAN UMS');
+        } catch {}
+      }}
+      style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
     >
       {/* Top Meta Line */}
       <div className="academic-card-header">
