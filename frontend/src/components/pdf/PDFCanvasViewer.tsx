@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist';
-import { api, PatronSession, ArticleItem } from '../../services/api';
+import { api, PatronSession, ArticleItem, sendReadingHeartbeat } from '../../services/api';
 
 // Set up PDF.js worker via reliable CDN matching the installed version
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '3.11.174'}/pdf.worker.min.js`;
@@ -97,10 +97,77 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
   let currentSession = session;
   if (!currentSession) {
     try {
-      const saved = localStorage.getItem('ums_patron_session');
+      const saved = localStorage.getItem('ums_patron_session') || localStorage.getItem('ums_intranet_session');
       if (saved) currentSession = JSON.parse(saved);
     } catch { }
   }
+
+  // =========================================================================
+  // Reading Analytics & Page Duration Tracking (Heatmap)
+  // =========================================================================
+  const activePageRef = useRef<number>(primaryCurrentPage);
+  const pageDurationRef = useRef<number>(0);
+  const lastActivityTimeRef = useRef<number>(Date.now());
+
+  const flushReadingHeartbeat = useCallback(() => {
+    if (pageDurationRef.current > 0 && primaryDoc.articleId) {
+      const dur = pageDurationRef.current;
+      const page = activePageRef.current;
+      pageDurationRef.current = 0;
+      sendReadingHeartbeat({
+        eprintId: primaryDoc.articleId,
+        articleTitle: primaryDoc.title,
+        pageNumber: page,
+        durationSeconds: dur,
+        patronNim: currentSession?.patron_nim,
+        patronName: currentSession?.patron_name,
+        accessType: currentSession?.id ? 'TOKEN' : 'INTRANET',
+      }).catch(() => {});
+    }
+  }, [primaryDoc.articleId, primaryDoc.title, currentSession]);
+
+  // Track page change & flush previous page duration
+  useEffect(() => {
+    if (activePageRef.current !== primaryCurrentPage) {
+      flushReadingHeartbeat();
+      activePageRef.current = primaryCurrentPage;
+    }
+  }, [primaryCurrentPage, flushReadingHeartbeat]);
+
+  // Active timer loop with idle and visibility check
+  useEffect(() => {
+    const handleUserActivity = () => {
+      lastActivityTimeRef.current = Date.now();
+    };
+
+    window.addEventListener('mousemove', handleUserActivity, { passive: true });
+    window.addEventListener('scroll', handleUserActivity, { passive: true });
+    window.addEventListener('keydown', handleUserActivity, { passive: true });
+    window.addEventListener('click', handleUserActivity, { passive: true });
+    window.addEventListener('touchstart', handleUserActivity, { passive: true });
+
+    const interval = setInterval(() => {
+      const isTabVisible = !document.hidden;
+      const isRecentActivity = Date.now() - lastActivityTimeRef.current < 45000; // 45s idle limit
+      if (isTabVisible && isWindowFocused && isRecentActivity && !primaryLoading && !primaryError) {
+        pageDurationRef.current += 1;
+        // Flush every 10 active seconds
+        if (pageDurationRef.current >= 10) {
+          flushReadingHeartbeat();
+        }
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('mousemove', handleUserActivity);
+      window.removeEventListener('scroll', handleUserActivity);
+      window.removeEventListener('keydown', handleUserActivity);
+      window.removeEventListener('click', handleUserActivity);
+      window.removeEventListener('touchstart', handleUserActivity);
+      flushReadingHeartbeat();
+    };
+  }, [isWindowFocused, primaryLoading, primaryError, flushReadingHeartbeat]);
 
   const effectiveTokenId = currentSession?.id || localStorage.getItem('ums_patron_token_id') || undefined;
   const primaryStreamUrl = api.getDocumentStreamUrl(primaryDoc.articleId, primaryDoc.docId, effectiveTokenId);
@@ -502,11 +569,16 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       }
 
       // Windows Snipping Tool (Win + Shift + S), Mac (Cmd + Shift + 3/4/5), Browser (Ctrl + Shift + S)
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 's' || e.key === 'S' || e.key === '3' || e.key === '4' || e.key === '5')) {
-        e.preventDefault();
-        e.stopPropagation();
-        triggerProtection('Pintasan tangkapan layar dinonaktifkan.', 'SNIPPING_TOOL_ATTEMPT');
-        return;
+      if (
+        ((e.metaKey || e.ctrlKey || e.key === 'Meta' || e.key === 'OS') && e.shiftKey) ||
+        (e.shiftKey && (e.key === 's' || e.key === 'S' || e.code === 'KeyS'))
+      ) {
+        if (e.key === 's' || e.key === 'S' || e.code === 'KeyS' || e.key === '3' || e.key === '4' || e.key === '5') {
+          e.preventDefault();
+          e.stopPropagation();
+          triggerProtection('Pintasan tangkapan layar terdeteksi & dinonaktifkan.', 'SNIPPING_TOOL_ATTEMPT');
+          return;
+        }
       }
 
       // Ctrl+C (Copy), Ctrl+X (Cut), Ctrl+A (Select All)
@@ -574,23 +646,22 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
     const handleVisibilityChange = () => {
       if (document.hidden) {
         setIsWindowFocused(false);
+        sanitizeClipboard();
       }
     };
 
     const handleWindowBlur = () => {
       if (focusCooldownRef.current) return;
-      // Debounce window blur to prevent false positive when switching UI controls
-      setTimeout(() => {
-        if (!document.hasFocus() || document.hidden) {
-          setIsWindowFocused(false);
-        }
-      }, 150);
+      // Instant blackout on focus lost (Snipping tool / Alt+Tab / Win key)
+      setIsWindowFocused(false);
+      sanitizeClipboard();
     };
 
     const handleMouseLeave = (e: MouseEvent) => {
       if (focusCooldownRef.current) return;
-      if (!e.relatedTarget && e.clientY <= 0) {
+      if (!e.relatedTarget && (e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight)) {
         setIsWindowFocused(false);
+        sanitizeClipboard();
       }
     };
 
@@ -1050,10 +1121,10 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
               alignItems: 'flex-start',
               minHeight: '100%',
               width: '100%',
-              filter: !isWindowFocused ? 'blur(36px) saturate(0)' : 'none',
-              opacity: !isWindowFocused ? 0.05 : 1,
+              filter: !isWindowFocused ? 'blur(40px) saturate(0)' : 'none',
+              opacity: !isWindowFocused ? 0 : 1,
               pointerEvents: !isWindowFocused ? 'none' : 'auto',
-              transition: 'filter 0.15s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s ease',
+              transition: isWindowFocused ? 'filter 0.15s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s ease' : 'none',
             }}
           >
             {viewMode === 'single' ? (

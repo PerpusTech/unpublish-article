@@ -101,3 +101,12 @@ Dokumen daftar tugas implementasi teknis berdasarkan [PRD](file:///d:/Code/unpub
   - `backend/Dockerfile` berbasis `node:22-slim` dengan healthcheck.
   - `frontend/Dockerfile` berbasis multi-stage Node 22 + Nginx Alpine.
   - `docker-compose.yml` dengan volume mount untuk database lokal dan berkas PDF EPrints.
+
+
+Penerapan di PC Layanan Perpustakaan (Kiosk Mode)
+Jika naskah ini dibuka di komputer khusus perpustakaan (PC Anjungan/Katalog), Anda dapat mematikan Snipping Tool secara permanen di PC tersebut melalui Windows Group Policy (GPO):
+
+Buka gpedit.msc di Windows PC perpustakaan.
+Masuk ke: User Configuration ➔ Administrative Templates ➔ Windows Components ➔ Tablet PC ➔ Accessories.
+Klik ganda Do not allow Snipping Tool to run ➔ Pilih Enabled.
+Dengan cara ini, tombol Win + Shift + S maupun aplikasi pemotong layar akan dinonaktifkan total oleh Windows pada PC layanan tersebut.

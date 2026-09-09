@@ -57,6 +57,8 @@ api.post('/admin/tokens/:id/revoke', requireAdminAuth, TokenController.revokeTok
 api.get('/admin/audit-logs', requireAdminAuth, AuditController.listLogs);
 api.get('/admin/audit-logs/export', requireAdminAuth, AuditController.exportCsv);
 api.get('/admin/analytics', requireAdminAuth, AnalyticsController.getAnalytics);
+api.get('/admin/analytics/reading-heatmap-summary', requireAdminAuth, AnalyticsController.getReadingHeatmapSummary);
+api.get('/admin/analytics/reading-heatmap/:eprintId', requireAdminAuth, AnalyticsController.getReadingHeatmap);
 api.get('/admin/incidents/recent', requireAdminAuth, TokenController.getRecentIncidents);
 api.get('/admin/eprints-status', requireAdminAuth, ArticleController.getDbStatus);
 
@@ -79,10 +81,12 @@ api.delete('/admin/users/:email', requireAdminAuth, UserController.deleteUser);
 
 // ================= PATRON SESSION & TELEMETRY ROUTES =================
 api.get('/patron/network-status', SettingController.getPatronNetworkStatus);
+api.post('/patron/intranet-checkin', SettingController.intranetCheckin);
 api.post('/patron/session/claim', TokenController.claimToken);
 api.get('/patron/session/status', TokenController.getSessionStatus);
 api.post('/patron/session/logout', TokenController.logout);
 api.post('/patron/incident', TokenController.reportIncident);
+api.post('/patron/analytics/heartbeat', optionalPatronSession, AnalyticsController.recordReadingHeartbeat);
 
 // ================= PROTECTED ARTICLE & BROWSE ROUTES =================
 api.get('/articles', requirePatronSession, ArticleController.listArticles);

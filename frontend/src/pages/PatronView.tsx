@@ -5,6 +5,8 @@ import { ArticleCardSkeleton } from '../components/patron/ArticleCardSkeleton';
 import { ArticleDetailModal } from '../components/patron/ArticleDetailModal';
 import { PDFCanvasViewer } from '../components/pdf/PDFCanvasViewer';
 import { BrowseItemsModal, BrowseCategory, ActiveFacetsState } from '../components/patron/BrowseItemsModal';
+import { IntranetCheckinModal } from '../components/patron/IntranetCheckinModal';
+import { RevokeSessionModal } from '../components/patron/RevokeSessionModal';
 import { PaginationControls } from '../components/common/PaginationControls';
 import { copyToClipboard } from '../utils/clipboard';
 
@@ -38,7 +40,23 @@ interface PatronViewProps {
 
 export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, onOpenClaimModal }) => {
   const hasAccess = !!session || !!networkStatus?.canReadDirectly;
-  const effectiveSession: PatronSession | null = session || (networkStatus?.canReadDirectly ? {
+  const [intranetSession, setIntranetSession] = useState<PatronSession | null>(() => {
+    try {
+      const saved = localStorage.getItem('ums_patron_session') || localStorage.getItem('ums_intranet_session');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.patron_nim && parsed.patron_name && parsed.patron_name !== 'Civitas Akademika UMS') {
+          return parsed;
+        }
+      }
+    } catch { }
+    return null;
+  });
+  const [isIntranetCheckinOpen, setIsIntranetCheckinOpen] = useState<boolean>(false);
+  const [isRevokeModalOpen, setIsRevokeModalOpen] = useState<boolean>(false);
+  const [pendingPdf, setPendingPdf] = useState<{ articleId: number; docId: number; title: string } | null>(null);
+
+  const effectiveSession: PatronSession | null = session || intranetSession || (networkStatus?.canReadDirectly ? {
     id: 'INTRANET_UMS',
     token_code: 'UMS-INTRANET',
     patron_name: 'Civitas Akademika UMS',
@@ -260,6 +278,11 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
   const handleOpenPdf = (articleId: number, docId: number, title: string) => {
     if (!hasAccess) {
       onOpenClaimModal();
+      return;
+    }
+    if (networkStatus?.canReadDirectly && !session && !intranetSession) {
+      setPendingPdf({ articleId, docId, title });
+      setIsIntranetCheckinOpen(true);
       return;
     }
     addToRecentReads({
@@ -530,24 +553,20 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
         <div>
           {/* Active Session Identity Banner */}
           {session ? (
-            <div className="session-active-card">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <span
-                  className="badge badge-publish"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px' }}
-                >
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />
-                  Sesi Terverifikasi
+            <div className="patron-session-bar">
+              <div className="patron-session-info">
+                <span className="patron-status-tag">
+                  <span className="status-dot blue" />
+                  Sesi Token
                 </span>
-
-                <span style={{ fontSize: 13.5, color: 'var(--color-text)' }}>
-                  Pemustaka: <strong>{session.patron_name}</strong> <span style={{ color: 'var(--color-text-muted)' }}>({session.patron_nim})</span>
+                <span className="patron-divider">|</span>
+                <span className="patron-identity-text">
+                  Pemustaka: <strong>{session.patron_name}</strong>{' '}
+                  <span className="patron-nim">({session.patron_nim})</span>
                 </span>
-
-                <span style={{ color: 'var(--color-border-dark)' }}>•</span>
-
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Kode Tiket:</span>
+                <span className="patron-divider">|</span>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Kode:</span>
                   <button
                     type="button"
                     className="copy-token-btn"
@@ -559,62 +578,116 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
                       <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                     </svg>
-                    {isCopied && <span style={{ color: 'var(--color-success)', fontSize: 10 }}>✓ Tersalin</span>}
+                    {isCopied && <span style={{ color: 'var(--color-success)', fontSize: 10 }}>✓</span>}
                   </button>
                 </div>
+                <span className="patron-divider">|</span>
+                <span className="patron-meta-note">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  Perangkat Terkunci
+                </span>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-muted)' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
-                <span>Perangkat Terkunci • Watermark Dinamis Aktif</span>
+              <div className="patron-session-controls">
+                <button
+                  type="button"
+                  className="patron-action-btn danger"
+                  onClick={() => setIsRevokeModalOpen(true)}
+                  title="Cabut sesi tiket token dari perangkat ini jika selesai membaca"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                  <span>Cabut Sesi</span>
+                </button>
               </div>
             </div>
           ) : (
-            <div
-              className="session-active-card"
-              style={{
-                borderColor: 'rgba(16, 185, 129, 0.3)',
-                backgroundColor: 'rgba(16, 185, 129, 0.05)',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <span
-                  className="badge badge-publish"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    padding: '4px 10px',
-                    backgroundColor: '#10b981',
-                  }}
-                >
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />
-                  Jaringan Kampus UMS
-                </span>
+            <div className="patron-session-bar">
+              {intranetSession ? (
+                <>
+                  <div className="patron-session-info">
+                    <span className="patron-status-tag">
+                      <span className="status-dot green" />
+                      Jaringan Kampus UMS
+                    </span>
+                    <span className="patron-divider">|</span>
+                    <span className="patron-identity-text">
+                      Pemustaka: <strong>{intranetSession.patron_name}</strong>{' '}
+                      <span className="patron-nim">({intranetSession.patron_nim})</span>
+                    </span>
+                    <span className="patron-divider">|</span>
+                    <span className="patron-meta-note">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                      </svg>
+                      Watermark Aktif
+                    </span>
+                  </div>
 
-                <span style={{ fontSize: 13.5, color: 'var(--color-text)' }}>
-                  Akses: <strong>Civitas Akademika UMS</strong>{' '}
-                  <span style={{ color: 'var(--color-text-muted)', fontFamily: 'monospace' }}>
-                    [IP: {networkStatus?.clientIp || '127.0.0.1'}]
-                  </span>
-                </span>
+                  <div className="patron-session-controls">
+                    <button
+                      type="button"
+                      className="patron-action-btn"
+                      onClick={() => setIsIntranetCheckinOpen(true)}
+                      title="Ubah identitas nama atau NIM"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                      <span>Ganti Identitas</span>
+                    </button>
 
-                <span style={{ color: 'var(--color-border-dark)' }}>•</span>
+                    <button
+                      type="button"
+                      className="patron-action-btn danger"
+                      onClick={() => setIsRevokeModalOpen(true)}
+                      title="Cabut identitas dari PC ini setelah selesai membaca"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                        <polyline points="16 17 21 12 16 7" />
+                        <line x1="21" y1="12" x2="9" y2="12" />
+                      </svg>
+                      <span>Keluar Sesi</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="patron-session-info">
+                    <span className="patron-status-tag">
+                      <span className="status-dot green" />
+                      Jaringan Kampus UMS
+                    </span>
+                    <span className="patron-divider">|</span>
+                    <span className="patron-identity-text">
+                      Akses Langsung Naskah Aktif <span className="patron-nim">({networkStatus?.clientIp || 'Wi-Fi/LAN'})</span>
+                    </span>
+                    <span className="patron-divider">|</span>
+                    <span className="patron-meta-note">
+                      Identitas belum terdaftar di perangkat ini
+                    </span>
+                  </div>
 
-                <span style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>
-                  Akses Langsung Tanpa Token Aktif
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-muted)' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                </svg>
-                <span>Watermark Intranet Dinamis Aktif</span>
-              </div>
+                  <div className="patron-session-controls">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      style={{ padding: '4px 12px', fontSize: 12, fontWeight: 600 }}
+                      onClick={() => setIsIntranetCheckinOpen(true)}
+                    >
+                      Isi Identitas Pemustaka
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
           {/* Recent Reads (Riwayat Baca Terakhir Pemustaka) */}
@@ -635,7 +708,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
                     <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
                     <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
                   </svg>
-                  <span>Riwayat Naskah Terakhir Dibuka (Recent Reads)</span>
+                  <span>Riwayat Naskah Terakhir Dibuka</span>
                   <span
                     style={{
                       fontSize: 11,
@@ -966,163 +1039,163 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
               facets.author ||
               facets.status !== 'ALL' ||
               searchQuery.trim().length > 0) && (
-              <div className="faceted-search-panel">
-                <div className="faceted-search-header">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--color-primary)' }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-                    </svg>
-                    <span>Filter Aktif (Faceted Search):</span>
+                <div className="faceted-search-panel">
+                  <div className="faceted-search-header">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--color-primary)' }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                      </svg>
+                      <span>Filter Aktif (Faceted Search):</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="facet-clear-all-btn"
+                      onClick={handleClearAllFilters}
+                      title="Reset semua filter ke awal"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                      <span>Hapus Semua Filter</span>
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    className="facet-clear-all-btn"
-                    onClick={handleClearAllFilters}
-                    title="Reset semua filter ke awal"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                    </svg>
-                    <span>Hapus Semua Filter</span>
-                  </button>
+                  <div className="faceted-filter-chips-list">
+                    {/* Search Query Chip */}
+                    {searchQuery.trim().length > 0 && (
+                      <div className="facet-chip">
+                        <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="11" cy="11" r="8" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                          </svg>
+                        </span>
+                        <span className="facet-chip-category">Kata Kunci:</span>
+                        <span className="facet-chip-value">"{searchQuery.trim()}"</span>
+                        <button
+                          type="button"
+                          className="facet-chip-remove"
+                          onClick={handleClearSearch}
+                          title="Hapus kata kunci pencarian"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Status Chip */}
+                    {facets.status !== 'ALL' && (
+                      <div className="facet-chip">
+                        <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                          </svg>
+                        </span>
+                        <span className="facet-chip-category">Status:</span>
+                        <span className="facet-chip-value">
+                          {facets.status === 'UNPUBLISH' ? 'Khusus Perpustakaan (Unpublish)' : 'Terbit Terbuka (Archive)'}
+                        </span>
+                        <button
+                          type="button"
+                          className="facet-chip-remove"
+                          onClick={handleRemoveStatusFacet}
+                          title="Kembalikan ke semua status"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Year Chip */}
+                    {facets.year && (
+                      <div className="facet-chip">
+                        <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon('year', 12)}</span>
+                        <span className="facet-chip-category">Tahun:</span>
+                        <span className="facet-chip-value">{facets.year}</span>
+                        <button
+                          type="button"
+                          className="facet-chip-remove"
+                          onClick={() => handleRemoveFacet('year')}
+                          title="Hapus filter tahun"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Division / Faculty Chip */}
+                    {facets.division && (
+                      <div className="facet-chip">
+                        <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon('division', 12)}</span>
+                        <span className="facet-chip-category">Divisi:</span>
+                        <span className="facet-chip-value">{facets.divisionLabel || facets.division}</span>
+                        <button
+                          type="button"
+                          className="facet-chip-remove"
+                          onClick={() => handleRemoveFacet('division')}
+                          title="Hapus filter divisi"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Type Chip */}
+                    {facets.type && (
+                      <div className="facet-chip">
+                        <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon('type', 12)}</span>
+                        <span className="facet-chip-category">Jenis:</span>
+                        <span className="facet-chip-value">{facets.typeLabel || facets.type}</span>
+                        <button
+                          type="button"
+                          className="facet-chip-remove"
+                          onClick={() => handleRemoveFacet('type')}
+                          title="Hapus filter jenis naskah"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Subject Chip */}
+                    {facets.subject && (
+                      <div className="facet-chip">
+                        <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon('subject', 12)}</span>
+                        <span className="facet-chip-category">Subjek:</span>
+                        <span className="facet-chip-value">{facets.subjectLabel || facets.subject}</span>
+                        <button
+                          type="button"
+                          className="facet-chip-remove"
+                          onClick={() => handleRemoveFacet('subject')}
+                          title="Hapus filter subjek"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Author Chip */}
+                    {facets.author && (
+                      <div className="facet-chip">
+                        <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon('author', 12)}</span>
+                        <span className="facet-chip-category">Penulis:</span>
+                        <span className="facet-chip-value">{facets.authorLabel || facets.author}</span>
+                        <button
+                          type="button"
+                          className="facet-chip-remove"
+                          onClick={() => handleRemoveFacet('author')}
+                          title="Hapus filter penulis"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-
-                <div className="faceted-filter-chips-list">
-                  {/* Search Query Chip */}
-                  {searchQuery.trim().length > 0 && (
-                    <div className="facet-chip">
-                      <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="11" cy="11" r="8" />
-                          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                        </svg>
-                      </span>
-                      <span className="facet-chip-category">Kata Kunci:</span>
-                      <span className="facet-chip-value">"{searchQuery.trim()}"</span>
-                      <button
-                        type="button"
-                        className="facet-chip-remove"
-                        onClick={handleClearSearch}
-                        title="Hapus kata kunci pencarian"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Status Chip */}
-                  {facets.status !== 'ALL' && (
-                    <div className="facet-chip">
-                      <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                        </svg>
-                      </span>
-                      <span className="facet-chip-category">Status:</span>
-                      <span className="facet-chip-value">
-                        {facets.status === 'UNPUBLISH' ? 'Khusus Perpustakaan (Unpublish)' : 'Terbit Terbuka (Archive)'}
-                      </span>
-                      <button
-                        type="button"
-                        className="facet-chip-remove"
-                        onClick={handleRemoveStatusFacet}
-                        title="Kembalikan ke semua status"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Year Chip */}
-                  {facets.year && (
-                    <div className="facet-chip">
-                      <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon('year', 12)}</span>
-                      <span className="facet-chip-category">Tahun:</span>
-                      <span className="facet-chip-value">{facets.year}</span>
-                      <button
-                        type="button"
-                        className="facet-chip-remove"
-                        onClick={() => handleRemoveFacet('year')}
-                        title="Hapus filter tahun"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Division / Faculty Chip */}
-                  {facets.division && (
-                    <div className="facet-chip">
-                      <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon('division', 12)}</span>
-                      <span className="facet-chip-category">Divisi:</span>
-                      <span className="facet-chip-value">{facets.divisionLabel || facets.division}</span>
-                      <button
-                        type="button"
-                        className="facet-chip-remove"
-                        onClick={() => handleRemoveFacet('division')}
-                        title="Hapus filter divisi"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Type Chip */}
-                  {facets.type && (
-                    <div className="facet-chip">
-                      <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon('type', 12)}</span>
-                      <span className="facet-chip-category">Jenis:</span>
-                      <span className="facet-chip-value">{facets.typeLabel || facets.type}</span>
-                      <button
-                        type="button"
-                        className="facet-chip-remove"
-                        onClick={() => handleRemoveFacet('type')}
-                        title="Hapus filter jenis naskah"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Subject Chip */}
-                  {facets.subject && (
-                    <div className="facet-chip">
-                      <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon('subject', 12)}</span>
-                      <span className="facet-chip-category">Subjek:</span>
-                      <span className="facet-chip-value">{facets.subjectLabel || facets.subject}</span>
-                      <button
-                        type="button"
-                        className="facet-chip-remove"
-                        onClick={() => handleRemoveFacet('subject')}
-                        title="Hapus filter subjek"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Author Chip */}
-                  {facets.author && (
-                    <div className="facet-chip">
-                      <span className="facet-chip-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{renderCategoryIcon('author', 12)}</span>
-                      <span className="facet-chip-category">Penulis:</span>
-                      <span className="facet-chip-value">{facets.authorLabel || facets.author}</span>
-                      <button
-                        type="button"
-                        className="facet-chip-remove"
-                        onClick={() => handleRemoveFacet('author')}
-                        title="Hapus filter penulis"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+              )}
           </div>
 
           {/* Results Summary Bar */}
@@ -1357,6 +1430,41 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
         onClose={() => setIsBrowseModalOpen(false)}
         onSelectFilter={handleSelectFacet}
         onRemoveFilter={handleRemoveFacet}
+      />
+
+      {/* Intranet Check-in Modal for Campus Network Self-Identification */}
+      <IntranetCheckinModal
+        isOpen={isIntranetCheckinOpen}
+        clientIp={networkStatus?.clientIp}
+        initialNim={intranetSession?.patron_nim}
+        initialName={intranetSession?.patron_name}
+        onClose={() => {
+          setIsIntranetCheckinOpen(false);
+          setPendingPdf(null);
+        }}
+        onSuccess={(newSession: PatronSession) => {
+          setIntranetSession(newSession);
+          if (pendingPdf) {
+            addToRecentReads({
+              eprintid: pendingPdf.articleId,
+              title: pendingPdf.title,
+            });
+            setActivePdf(pendingPdf);
+            setPendingPdf(null);
+          }
+        }}
+      />
+
+      {/* Revoke Session Confirmation Modal for Shared / Public Devices */}
+      <RevokeSessionModal
+        isOpen={isRevokeModalOpen}
+        session={intranetSession}
+        onClose={() => setIsRevokeModalOpen(false)}
+        onSuccess={() => {
+          setIntranetSession(null);
+          setActivePdf(null);
+          setSelectedArticle(null);
+        }}
       />
     </div>
   );

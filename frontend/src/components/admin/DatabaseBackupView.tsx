@@ -305,9 +305,9 @@ export const DatabaseBackupView: React.FC<DatabaseBackupViewProps> = ({ onShowTo
       {/* Database Details & Table Breakdown */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: 24, alignItems: 'start' }}>
         {/* Left Column: Tables Metadata */}
-        <div className="admin-card" style={{ padding: 24 }}>
+        <div className="card" style={{ padding: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--color-text-main)' }}>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>
               Rincian Tabel Database Lokal
             </h3>
             <button
@@ -377,7 +377,7 @@ export const DatabaseBackupView: React.FC<DatabaseBackupViewProps> = ({ onShowTo
             style={{
               marginTop: 20,
               padding: '12px 16px',
-              backgroundColor: 'var(--color-bg-alt, #f8fafc)',
+              backgroundColor: 'var(--color-surface-subtle)',
               borderRadius: 8,
               border: '1px solid var(--color-border)',
               display: 'flex',
@@ -387,10 +387,10 @@ export const DatabaseBackupView: React.FC<DatabaseBackupViewProps> = ({ onShowTo
             }}
           >
             <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-light)', display: 'block', textTransform: 'uppercase' }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', display: 'block', textTransform: 'uppercase' }}>
                 Lokasi Berkas di Server
               </span>
-              <code style={{ fontSize: 12, color: 'var(--color-text-main)', fontFamily: 'monospace' }}>
+              <code style={{ fontSize: 12, color: 'var(--color-text)', fontFamily: 'monospace' }}>
                 {stats?.databasePath || 'Memuat...'}
               </code>
             </div>
@@ -408,7 +408,7 @@ export const DatabaseBackupView: React.FC<DatabaseBackupViewProps> = ({ onShowTo
         {/* Right Column: Maintenance & Recovery Info */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Optimization Box */}
-          <div className="admin-card" style={{ padding: 24 }}>
+          <div className="card" style={{ padding: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <span
                 style={{
@@ -419,14 +419,14 @@ export const DatabaseBackupView: React.FC<DatabaseBackupViewProps> = ({ onShowTo
                   height: 28,
                   borderRadius: 6,
                   backgroundColor: 'rgba(234, 179, 8, 0.15)',
-                  color: '#b45309',
+                  color: '#eab308',
                 }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
                 </svg>
               </span>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--color-text-main)' }}>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--color-text)' }}>
                 Pemeliharaan & Optimasi (VACUUM)
               </h3>
             </div>
@@ -473,14 +473,14 @@ export const DatabaseBackupView: React.FC<DatabaseBackupViewProps> = ({ onShowTo
           </div>
 
           {/* Disaster Recovery Guide Card */}
-          <div className="admin-card" style={{ padding: 24, backgroundColor: '#fafbfc' }}>
+          <div className="card" style={{ padding: 24, backgroundColor: 'var(--color-surface-subtle)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
                 <line x1="12" y1="16" x2="12" y2="12" />
                 <line x1="12" y1="8" x2="12.01" y2="8" />
               </svg>
-              <h4 style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: 'var(--color-text-main)' }}>
+              <h4 style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>
                 Panduan Pemulihan (Disaster Recovery)
               </h4>
             </div>

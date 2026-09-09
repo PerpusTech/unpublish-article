@@ -19,8 +19,8 @@ export const ThemeToggle: React.FC = () => {
     } else {
       document.documentElement.removeAttribute('data-theme');
       localStorage.setItem('theme', 'light');
-      if (favicon) favicon.href = '/img/logo4a.png';
-      if (appleIcon) appleIcon.href = '/img/logo4a.png';
+      if (favicon) favicon.href = '/img/logo4.png';
+      if (appleIcon) appleIcon.href = '/img/logo4.png';
     }
   }, [isDark]);
 

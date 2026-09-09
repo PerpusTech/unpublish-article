@@ -194,7 +194,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ onSh
   }
 
   return (
-    <div className="animated-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 960 }}>
+    <div className="animated-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 24, width: '100%' }}>
       {/* 1. Header Banner & Diagnostics */}
       <div className="card" style={{ padding: '20px 24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>

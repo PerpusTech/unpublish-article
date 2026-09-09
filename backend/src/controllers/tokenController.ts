@@ -404,11 +404,69 @@ export class TokenController {
   }
 
   /**
-   * Patron logout
+   * Patron logout / revoke identity session from public/campus device
    */
   public static async logout(req: Request, res: Response): Promise<void> {
-    res.clearCookie('patron_token_id');
-    res.json({ success: true, message: 'Sesi selesai.' });
+    try {
+      const { tokenId, patronNim, patronName } = req.body || {};
+      const effectiveTokenId =
+        tokenId ||
+        (req.headers['x-patron-token-id'] as string) ||
+        req.cookies?.patron_token_id ||
+        (req.query?.token_id as string) ||
+        '';
+
+      const effectiveNim =
+        patronNim ||
+        (req.headers['x-patron-nim'] as string) ||
+        req.cookies?.ums_intranet_nim ||
+        '';
+
+      const effectiveName =
+        patronName ||
+        (req.headers['x-patron-name'] as string) ||
+        req.cookies?.ums_intranet_name ||
+        'Civitas Akademika UMS';
+
+      const ip = getHeader(req.headers['x-forwarded-for']) || req.socket.remoteAddress || '127.0.0.1';
+      const userAgent = getHeader(req.headers['user-agent']) || 'Unknown';
+
+      // Clear all patron session cookies
+      res.clearCookie('patron_token_id', { path: '/' });
+      res.clearCookie('ums_intranet_nim', { path: '/' });
+      res.clearCookie('ums_intranet_name', { path: '/' });
+
+      // Update tokens table status to REVOKED if token exists
+      if (effectiveTokenId || effectiveNim) {
+        try {
+          const { query } = await import('../config/appDb');
+          if (effectiveTokenId) {
+            await query.run("UPDATE tokens SET status = 'REVOKED' WHERE id = ?", [effectiveTokenId]);
+          }
+          if (effectiveNim) {
+            await query.run("UPDATE tokens SET status = 'REVOKED' WHERE patron_nim = ? AND created_by_admin = 'CAMPUS_INTRANET'", [effectiveNim]);
+          }
+        } catch (dbErr) {
+          console.warn('[TokenController] Error revoking token in DB:', dbErr);
+        }
+
+        // Record Audit Log for manual revocation / logout
+        await AuditService.logAction({
+          tokenId: effectiveTokenId || `intranet_${ip.replace(/[^a-zA-Z0-9]/g, '_')}_${effectiveNim}`,
+          patronNim: effectiveNim || ip,
+          patronName: effectiveName,
+          action: 'REVOKE_TOKEN',
+          articleTitle: 'Pemustaka mencabut / mengakhiri sesi identitas di perangkat ini',
+          ipAddress: ip,
+          userAgent,
+        });
+      }
+
+      res.json({ success: true, message: 'Sesi membaca pemustaka berhasil dicabut dari perangkat ini.' });
+    } catch (err: any) {
+      console.error('[TokenController] Error in logout:', err);
+      res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Gagal mencabut sesi.' } });
+    }
   }
 
   /**

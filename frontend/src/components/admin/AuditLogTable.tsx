@@ -195,7 +195,7 @@ export const AuditLogTable: React.FC = () => {
           <button
             type="button"
             className="btn btn-secondary btn-sm"
-            onClick={() => fetchLogs()}
+            onClick={() => fetchLogs(1, pageSize)}
             disabled={loading}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >

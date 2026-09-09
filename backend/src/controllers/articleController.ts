@@ -43,18 +43,28 @@ export class ArticleController {
         limit
       });
 
-      // If there's an active patron and search query, log the search
-      if (req.patron && q && q.trim().length > 0) {
-        const ip = getHeader(req.headers['x-forwarded-for']) || req.socket.remoteAddress || '127.0.0.1';
-        AuditService.logAction({
-          tokenId: req.patron.id,
-          patronNim: req.patron.patron_nim,
-          patronName: req.patron.patron_name,
-          action: 'SEARCH',
-          articleTitle: `Pencarian: "${q.trim()}"`,
-          ipAddress: ip,
-          userAgent: getHeader(req.headers['user-agent']) || 'Unknown'
-        });
+      // If there's an active patron and search query / filter, log the search
+      if (req.patron) {
+        const filters: string[] = [];
+        if (q && q.trim().length > 0) filters.push(`Kata Kunci: "${q.trim()}"`);
+        if (division) filters.push(`Fakultas/Prodi: ${division}`);
+        if (year) filters.push(`Tahun: ${year}`);
+        if (subject) filters.push(`Subjek: ${subject}`);
+        if (type) filters.push(`Tipe: ${type}`);
+        if (author) filters.push(`Penulis: ${author}`);
+
+        if (filters.length > 0) {
+          const ip = getHeader(req.headers['x-forwarded-for']) || req.socket.remoteAddress || '127.0.0.1';
+          AuditService.logAction({
+            tokenId: req.patron.id,
+            patronNim: req.patron.patron_nim,
+            patronName: req.patron.patron_name,
+            action: 'SEARCH',
+            articleTitle: filters.join(' • '),
+            ipAddress: ip,
+            userAgent: getHeader(req.headers['user-agent']) || 'Unknown'
+          });
+        }
       }
 
       res.json(result);
@@ -88,6 +98,21 @@ export class ArticleController {
 
     try {
       const result = await EPrintsService.browseCategory(category, q);
+
+      // Log browsing if patron is active
+      if (req.patron && q && q.trim().length > 0) {
+        const ip = getHeader(req.headers['x-forwarded-for']) || req.socket.remoteAddress || '127.0.0.1';
+        AuditService.logAction({
+          tokenId: req.patron.id,
+          patronNim: req.patron.patron_nim,
+          patronName: req.patron.patron_name,
+          action: 'SEARCH',
+          articleTitle: `Jelajah ${category.toUpperCase()}: "${q.trim()}"`,
+          ipAddress: ip,
+          userAgent: getHeader(req.headers['user-agent']) || 'Unknown'
+        });
+      }
+
       res.json(result);
     } catch (err: any) {
       console.error('[ArticleController] Browse error:', err);

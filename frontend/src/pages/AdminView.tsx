@@ -507,13 +507,13 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
           className={`admin-tab-btn ${activeTab === 'TOKENS' ? 'active' : ''}`}
           onClick={() => setActiveTab('TOKENS')}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="4" width="18" height="18" rx="2" />
             <path d="M7 8h10" />
             <path d="M7 12h10" />
             <path d="M7 16h6" />
           </svg>
-          <span>Sesi Pemustaka & Tiket</span>
+          <span>Sesi & Tiket</span>
           <span className="admin-tab-counter">{tokens.length}</span>
         </button>
 
@@ -522,12 +522,12 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
           className={`admin-tab-btn ${activeTab === 'ANALYTICS' ? 'active' : ''}`}
           onClick={() => setActiveTab('ANALYTICS')}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="20" x2="18" y2="10" />
             <line x1="12" y1="20" x2="12" y2="4" />
             <line x1="6" y1="20" x2="6" y2="14" />
           </svg>
-          <span>Statistik & Analitik</span>
+          <span>Statistik</span>
         </button>
 
         <button
@@ -535,11 +535,11 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
           className={`admin-tab-btn ${activeTab === 'AUDIT' ? 'active' : ''}`}
           onClick={() => setActiveTab('AUDIT')}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 20h9" />
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
           </svg>
-          <span>Audit Trail & Log Akses</span>
+          <span>Audit Log</span>
         </button>
 
         <button
@@ -547,13 +547,13 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
           className={`admin-tab-btn ${activeTab === 'USERS' ? 'active' : ''}`}
           onClick={() => setActiveTab('USERS')}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
             <circle cx="9" cy="7" r="4" />
             <line x1="19" y1="8" x2="19" y2="14" />
             <line x1="22" y1="11" x2="16" y2="11" />
           </svg>
-          <span>Kelola Pengguna & Role</span>
+          <span>Pengguna & Role</span>
         </button>
 
         <button
@@ -561,10 +561,10 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
           className={`admin-tab-btn ${activeTab === 'SECURITY' ? 'active' : ''}`}
           onClick={() => setActiveTab('SECURITY')}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
-          <span>Keamanan & Jaringan UMS</span>
+          <span>Keamanan UMS</span>
         </button>
 
         <button
@@ -572,12 +572,12 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
           className={`admin-tab-btn ${activeTab === 'SYSTEM' ? 'active' : ''}`}
           onClick={() => setActiveTab('SYSTEM')}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <ellipse cx="12" cy="5" rx="9" ry="3" />
             <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
             <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
           </svg>
-          <span>Status Repositori & Sistem</span>
+          <span>Status Repositori</span>
         </button>
 
         <button
@@ -585,12 +585,12 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
           className={`admin-tab-btn ${activeTab === 'BACKUP' ? 'active' : ''}`}
           onClick={() => setActiveTab('BACKUP')}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="7 10 12 15 17 10" />
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
-          <span>Backup Database</span>
+          <span>Backup DB</span>
         </button>
       </div>
 
@@ -619,7 +619,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
       )}
 
       {activeTab === 'SYSTEM' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 820 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, width: '100%' }}>
           {/* EPrints Database Connectivity Diagnostics Card */}
           <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>

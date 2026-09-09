@@ -132,6 +132,39 @@ export const api = {
     }
   },
 
+  async intranetCheckin(
+    patronNim: string,
+    patronName: string
+  ): Promise<{ success: boolean; session?: PatronSession; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/patron/intranet-checkin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-uuid': getClientUuid(),
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          patronNim: patronNim.trim(),
+          patronName: patronName.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error?.message || 'Gagal menyimpan data identitas pemustaka' };
+      }
+      if (data.session) {
+        localStorage.setItem('ums_patron_session', JSON.stringify(data.session));
+        localStorage.setItem('ums_intranet_session', JSON.stringify(data.session));
+        localStorage.setItem('ums_patron_token_id', data.session.id);
+      }
+      return { success: true, session: data.session };
+    } catch (err: any) {
+      return { success: false, error: 'Terjadi kesalahan jaringan saat check-in.' };
+    }
+  },
+
   async getSessionStatus(): Promise<{ isActive: boolean; session?: PatronSession; reason?: string }> {
     try {
       const storedTokenId = localStorage.getItem('ums_patron_token_id') || '';
@@ -159,14 +192,40 @@ export const api = {
     }
   },
 
-  async logoutPatron(): Promise<void> {
+  async logoutPatron(sessionData?: { tokenId?: string; patronNim?: string; patronName?: string }): Promise<void> {
     try {
+      let tokenId = sessionData?.tokenId;
+      let patronNim = sessionData?.patronNim;
+      let patronName = sessionData?.patronName;
+
+      if (!tokenId || !patronNim) {
+        try {
+          const raw = localStorage.getItem('ums_patron_session') || localStorage.getItem('ums_intranet_session');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (!tokenId && parsed.id) tokenId = parsed.id;
+            if (!patronNim && parsed.patron_nim) patronNim = parsed.patron_nim;
+            if (!patronName && parsed.patron_name) patronName = parsed.patron_name;
+          }
+        } catch { }
+      }
+
       await fetch(`${API_BASE}/patron/session/logout`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-uuid': getClientUuid(),
+        },
         credentials: 'include',
+        body: JSON.stringify({
+          tokenId,
+          patronNim,
+          patronName,
+        }),
       });
     } finally {
       localStorage.removeItem('ums_patron_session');
+      localStorage.removeItem('ums_intranet_session');
       localStorage.removeItem('ums_patron_token_id');
     }
   },
@@ -199,11 +258,22 @@ export const api = {
     const storedTokenId = localStorage.getItem('ums_patron_token_id') || '';
     if (storedTokenId) qs.append('token_id', storedTokenId);
 
+    let patronHeaders: Record<string, string> = {};
+    try {
+      const rawSession = localStorage.getItem('ums_patron_session') || localStorage.getItem('ums_intranet_session');
+      if (rawSession) {
+        const parsed = JSON.parse(rawSession);
+        if (parsed.patron_nim) patronHeaders['x-patron-nim'] = parsed.patron_nim;
+        if (parsed.patron_name) patronHeaders['x-patron-name'] = parsed.patron_name;
+      }
+    } catch { }
+
     const res = await fetch(`${API_BASE}/articles?${qs.toString()}`, {
       credentials: 'include',
       headers: {
         'x-client-uuid': getClientUuid(),
-        ...(storedTokenId ? { 'x-patron-token-id': storedTokenId } : {})
+        ...(storedTokenId ? { 'x-patron-token-id': storedTokenId } : {}),
+        ...patronHeaders,
       },
     });
 
@@ -224,11 +294,22 @@ export const api = {
     const storedTokenId = localStorage.getItem('ums_patron_token_id') || '';
     if (storedTokenId) qs.append('token_id', storedTokenId);
 
+    let patronHeaders: Record<string, string> = {};
+    try {
+      const rawSession = localStorage.getItem('ums_patron_session') || localStorage.getItem('ums_intranet_session');
+      if (rawSession) {
+        const parsed = JSON.parse(rawSession);
+        if (parsed.patron_nim) patronHeaders['x-patron-nim'] = parsed.patron_nim;
+        if (parsed.patron_name) patronHeaders['x-patron-name'] = parsed.patron_name;
+      }
+    } catch { }
+
     const res = await fetch(`${API_BASE}/browse/${category}?${qs.toString()}`, {
       credentials: 'include',
       headers: {
         'x-client-uuid': getClientUuid(),
-        ...(storedTokenId ? { 'x-patron-token-id': storedTokenId } : {})
+        ...(storedTokenId ? { 'x-patron-token-id': storedTokenId } : {}),
+        ...patronHeaders,
       },
     });
 
@@ -244,11 +325,22 @@ export const api = {
     const qs = new URLSearchParams();
     if (storedTokenId) qs.append('token_id', storedTokenId);
 
+    let patronHeaders: Record<string, string> = {};
+    try {
+      const rawSession = localStorage.getItem('ums_patron_session') || localStorage.getItem('ums_intranet_session');
+      if (rawSession) {
+        const parsed = JSON.parse(rawSession);
+        if (parsed.patron_nim) patronHeaders['x-patron-nim'] = parsed.patron_nim;
+        if (parsed.patron_name) patronHeaders['x-patron-name'] = parsed.patron_name;
+      }
+    } catch { }
+
     const res = await fetch(`${API_BASE}/articles/${id}?${qs.toString()}`, {
       credentials: 'include',
       headers: {
         'x-client-uuid': getClientUuid(),
-        ...(storedTokenId ? { 'x-patron-token-id': storedTokenId } : {})
+        ...(storedTokenId ? { 'x-patron-token-id': storedTokenId } : {}),
+        ...patronHeaders,
       },
     });
 
@@ -260,12 +352,29 @@ export const api = {
     return data.article;
   },
 
-  getDocumentStreamUrl(articleId: number, docId: number, tokenId?: string): string {
+  getDocumentStreamUrl(articleId: number, docId: number, tokenId?: string, patronNim?: string, patronName?: string): string {
     const uuid = getClientUuid();
     const storedTokenId = tokenId || localStorage.getItem('ums_patron_token_id') || '';
     const qs = new URLSearchParams();
     if (uuid) qs.append('client_uuid', uuid);
     if (storedTokenId) qs.append('token_id', storedTokenId);
+
+    let effectiveNim = patronNim;
+    let effectiveName = patronName;
+    if (!effectiveNim || !effectiveName) {
+      try {
+        const rawSession = localStorage.getItem('ums_patron_session') || localStorage.getItem('ums_intranet_session');
+        if (rawSession) {
+          const parsed = JSON.parse(rawSession);
+          if (!effectiveNim && parsed.patron_nim) effectiveNim = parsed.patron_nim;
+          if (!effectiveName && parsed.patron_name) effectiveName = parsed.patron_name;
+        }
+      } catch { }
+    }
+
+    if (effectiveNim) qs.append('patron_nim', effectiveNim);
+    if (effectiveName) qs.append('patron_name', effectiveName);
+
     return `${API_BASE}/articles/${articleId}/documents/${docId}/view?${qs.toString()}`;
   },
 
@@ -841,4 +950,91 @@ export async function updateAdminSecuritySettings(
     throw new Error(data.error?.message || 'Gagal menyimpan pengaturan keamanan');
   }
   return res.json();
+}
+
+// ==========================================
+// Reading Heatmap & Duration Analytics APIs
+// ==========================================
+export interface HeatmapPageStat {
+  pageNumber: number;
+  totalDurationSeconds: number;
+  avgDurationSeconds: number;
+  viewCount: number;
+  uniqueReaders: number;
+  intensityScore: number; // 0 - 100%
+}
+
+export interface ReadingHeatmapData {
+  eprintId: number;
+  articleTitle: string;
+  grandTotalSeconds: number;
+  totalReadingEvents: number;
+  totalUniqueReaders: number;
+  maxRecordedPage: number;
+  pages: HeatmapPageStat[];
+  peakPages: HeatmapPageStat[];
+}
+
+export interface ReadingHeatmapSummaryItem {
+  eprint_id: number;
+  article_title: string;
+  total_duration_seconds: number;
+  unique_readers: number;
+  total_events: number;
+  pages_covered: number;
+  last_read_at: string;
+}
+
+export interface ReadingHeatmapSummaryResponse {
+  overallTotalSeconds: number;
+  overallUniqueReaders: number;
+  manuscripts: ReadingHeatmapSummaryItem[];
+}
+
+export async function sendReadingHeartbeat(params: {
+  eprintId: number;
+  articleTitle?: string;
+  pageNumber: number;
+  durationSeconds: number;
+  patronNim?: string;
+  patronName?: string;
+  accessType?: 'INTRANET' | 'TOKEN';
+}): Promise<{ success: boolean }> {
+  try {
+    const res = await fetch(`${API_BASE}/patron/analytics/heartbeat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-uuid': getClientUuid(),
+      },
+      body: JSON.stringify(params),
+    });
+    return await res.json();
+  } catch {
+    return { success: false };
+  }
+}
+
+export async function getReadingHeatmap(eprintId: number): Promise<ReadingHeatmapData> {
+  const res = await fetch(`${API_BASE}/admin/analytics/reading-heatmap/${eprintId}`, {
+    headers: getAdminHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error?.message || 'Gagal memuat heatmap durasi membaca naskah');
+  }
+  const body = await res.json();
+  return body.data;
+}
+
+export async function getReadingHeatmapSummary(): Promise<ReadingHeatmapSummaryResponse> {
+  const res = await fetch(`${API_BASE}/admin/analytics/reading-heatmap-summary`, {
+    headers: getAdminHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error?.message || 'Gagal memuat ringkasan durasi membaca naskah');
+  }
+  const body = await res.json();
+  return body.data;
 }

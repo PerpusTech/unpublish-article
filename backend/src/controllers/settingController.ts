@@ -46,6 +46,125 @@ export class SettingController {
   }
 
   /**
+   * Patron self-identification check-in for UMS Campus Network
+   */
+  public static async intranetCheckin(req: Request, res: Response): Promise<void> {
+    try {
+      const clientIp = SecuritySettingService.extractClientIp(req);
+      const isUmsNetwork = await SecuritySettingService.isClientInUmsNetwork(clientIp);
+      const settings = await SecuritySettingService.getSettings();
+
+      if (settings.accessMode === 'TOKEN_ONLY' || (!isUmsNetwork && settings.accessMode === 'UMS_NETWORK_ONLY')) {
+        res.status(403).json({
+          error: {
+            code: 'CAMPUS_NETWORK_REQUIRED',
+            message: 'Check-in mandiri hanya tersedia untuk perangkat yang terhubung ke jaringan kampus UMS.',
+          },
+        });
+        return;
+      }
+
+      const { patronNim, patronName } = req.body;
+
+      if (!patronNim || typeof patronNim !== 'string' || !patronNim.trim()) {
+        res.status(400).json({
+          error: {
+            code: 'INVALID_NIM',
+            message: 'NIM / NIDN / No. Identitas wajib diisi.',
+          },
+        });
+        return;
+      }
+
+      if (!patronName || typeof patronName !== 'string' || !patronName.trim()) {
+        res.status(400).json({
+          error: {
+            code: 'INVALID_NAME',
+            message: 'Nama lengkap wajib diisi.',
+          },
+        });
+        return;
+      }
+
+      const cleanNim = patronNim.trim().toUpperCase();
+      const cleanName = patronName.trim();
+      const sanitizedIp = clientIp.replace(/[^a-zA-Z0-9]/g, '_');
+      const sessionId = `intranet_${sanitizedIp}_${cleanNim}`;
+
+      // Set cookies for subsequent requests
+      const cookieOptions = {
+        httpOnly: false,
+        secure: false,
+        sameSite: 'lax' as const,
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        path: '/',
+      };
+
+      res.cookie('ums_intranet_nim', cleanNim, cookieOptions);
+      res.cookie('ums_intranet_name', cleanName, cookieOptions);
+
+      // Log check-in activation audit event
+      const userAgent = (Array.isArray(req.headers['user-agent']) ? req.headers['user-agent'][0] : req.headers['user-agent']) || 'Unknown';
+      const { AuditService } = await import('../services/auditService');
+      AuditService.logAction({
+        tokenId: sessionId,
+        patronNim: cleanNim,
+        patronName: cleanName,
+        action: 'ACTIVATE_TOKEN',
+        articleTitle: 'Check-in Mandiri Jaringan Kampus UMS',
+        ipAddress: clientIp,
+        userAgent,
+      });
+
+      // Also persist to tokens table so it appears in Sesi & Tiket active sessions tab
+      const now = new Date().toISOString();
+      const expiresAt = new Date(Date.now() + 86400000).toISOString();
+      const tokenCode = `INT-${cleanNim}`;
+
+      try {
+        const { query } = await import('../config/appDb');
+        await query.run('DELETE FROM tokens WHERE id = ? OR token_code = ?', [sessionId, tokenCode]);
+        await query.run(
+          `INSERT INTO tokens (
+            id, token_code, patron_name, patron_nim, duration_minutes,
+            status, created_by_admin, created_at, claimed_at, expires_at, notes
+          ) VALUES (?, ?, ?, ?, 1440, 'ACTIVE', 'CAMPUS_INTRANET', ?, ?, ?, ?)`,
+          [
+            sessionId,
+            tokenCode,
+            cleanName,
+            cleanNim,
+            now,
+            now,
+            expiresAt,
+            `Check-in Mandiri Wi-Fi Kampus UMS (${clientIp})`,
+          ]
+        );
+      } catch (dbErr) {
+        console.warn('[SettingController] Warning persisting to tokens table:', dbErr);
+      }
+
+      const session = {
+        id: sessionId,
+        token_code: tokenCode,
+        patron_name: cleanName,
+        patron_nim: cleanNim,
+        expires_at: expiresAt,
+        remaining_seconds: 86400,
+      };
+
+      res.json({
+        success: true,
+        message: `Selamat datang, ${cleanName}. Identitas membaca Anda berhasil diaktifkan.`,
+        session,
+      });
+    } catch (err: any) {
+      console.error('[SettingController] Error intranetCheckin:', err);
+      res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Gagal memproses identifikasi pemustaka.' } });
+    }
+  }
+
+  /**
    * Get admin security settings (Access Mode + IP Whitelist + Test Client IP)
    */
   public static async getSecuritySettings(req: Request, res: Response): Promise<void> {

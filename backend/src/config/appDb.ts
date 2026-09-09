@@ -102,6 +102,26 @@ export async function initAppDb(): Promise<void> {
   await query.run(`CREATE INDEX IF NOT EXISTS idx_audit_eprint ON audit_logs(eprint_id)`);
   await query.run(`CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at)`);
 
+  // 2b. Page-Level Reading Duration & Heatmap Logs Table
+  await query.run(`
+    CREATE TABLE IF NOT EXISTS page_reading_logs (
+      id TEXT PRIMARY KEY,
+      eprint_id INTEGER NOT NULL,
+      article_title TEXT,
+      page_number INTEGER NOT NULL,
+      duration_seconds INTEGER NOT NULL,
+      patron_nim TEXT,
+      patron_name TEXT,
+      access_type TEXT DEFAULT 'INTRANET',
+      ip_address TEXT NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query.run(`CREATE INDEX IF NOT EXISTS idx_reading_eprint ON page_reading_logs(eprint_id)`);
+  await query.run(`CREATE INDEX IF NOT EXISTS idx_reading_page ON page_reading_logs(eprint_id, page_number)`);
+  await query.run(`CREATE INDEX IF NOT EXISTS idx_reading_created ON page_reading_logs(created_at)`);
+
   // 3. Admin Users Table
   await query.run(`
     CREATE TABLE IF NOT EXISTS admin_users (

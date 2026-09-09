@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api, AnalyticsData } from '../../services/api';
+import { ReadingHeatmapSection } from './ReadingHeatmapSection';
 
 interface AnalyticsDashboardProps {
   onShowToast?: (message: string, type?: 'success' | 'danger') => void;
@@ -506,6 +507,9 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onShowTo
           </div>
         )}
       </div>
+
+      {/* Reading Heatmap & Duration Analytics per Manuscript */}
+      <ReadingHeatmapSection onShowToast={onShowToast} />
     </div>
   );
 };
