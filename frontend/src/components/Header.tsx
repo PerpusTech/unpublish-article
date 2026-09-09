@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { PatronSession } from '../services/api';
+import { PatronSession, NetworkStatusResponse } from '../services/api';
 
 interface HeaderProps {
   session: PatronSession | null;
+  networkStatus?: NetworkStatusResponse | null;
   isAdmin?: boolean;
   onLogoutPatron: () => void;
   onOpenAdmin?: () => void;
@@ -12,6 +13,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   session,
+  networkStatus,
   isAdmin = false,
   onLogoutPatron,
   onOpenAdmin,
@@ -88,6 +90,48 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="header-actions">
+          {/* UMS Campus Network Status Badge */}
+          {networkStatus && !isAdmin && (
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 10px',
+                borderRadius: 20,
+                backgroundColor: networkStatus.isUmsNetwork
+                  ? 'rgba(16, 185, 129, 0.12)'
+                  : 'rgba(100, 116, 139, 0.12)',
+                border: `1px solid ${
+                  networkStatus.isUmsNetwork
+                    ? 'rgba(16, 185, 129, 0.3)'
+                    : 'rgba(100, 116, 139, 0.25)'
+                }`,
+                color: networkStatus.isUmsNetwork ? '#10b981' : 'var(--color-text-muted)',
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+              title={`Status IP: ${networkStatus.clientIp} (${networkStatus.message})`}
+            >
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  backgroundColor: networkStatus.isUmsNetwork ? '#10b981' : '#94a3b8',
+                  boxShadow: networkStatus.isUmsNetwork ? '0 0 6px #10b981' : 'none',
+                }}
+              />
+              <span>
+                {networkStatus.isUmsNetwork
+                  ? 'Wi-Fi / Jaringan UMS'
+                  : networkStatus.accessMode === 'UMS_NETWORK_ONLY'
+                  ? 'Luar Kampus (Terkunci)'
+                  : 'Luar Kampus (Perlu Token)'}
+              </span>
+            </div>
+          )}
+
           {session && (
             <div className={getTimerClass()}>
               <span>Sisa Sesi:</span>
@@ -105,7 +149,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {!session && !isAdmin && (
+          {!session && !isAdmin && !networkStatus?.canReadDirectly && (
             <button
               type="button"
               className="btn btn-primary btn-sm"

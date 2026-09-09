@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, PatronSession } from './services/api';
+import { api, PatronSession, NetworkStatusResponse } from './services/api';
 import { Header } from './components/Header';
 import { PatronView } from './pages/PatronView';
 import { AdminView } from './pages/AdminView';
@@ -17,6 +17,7 @@ export const App: React.FC = () => {
       return null;
     }
   });
+  const [networkStatus, setNetworkStatus] = useState<NetworkStatusResponse | null>(null);
   const [expiredSession, setExpiredSession] = useState<PatronSession | null>(null);
   const [isExpiredModalOpen, setIsExpiredModalOpen] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'PATRON' | 'ADMIN'>(() => {
@@ -106,6 +107,15 @@ export const App: React.FC = () => {
     }
   };
 
+  const checkNetworkStatus = async () => {
+    try {
+      const res = await api.getPatronNetworkStatus();
+      setNetworkStatus(res);
+    } catch {
+      // transient failure
+    }
+  };
+
   const handleSessionExpired = () => {
     if (session) {
       setExpiredSession(session);
@@ -118,13 +128,22 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     verifyPatronSession();
+    checkNetworkStatus();
 
     // Check session status every 5 seconds for fast response to revocation or expiry
-    const interval = setInterval(() => {
+    const sessionInterval = setInterval(() => {
       verifyPatronSession();
     }, 5000);
 
-    return () => clearInterval(interval);
+    // Refresh network status every 20 seconds
+    const networkInterval = setInterval(() => {
+      checkNetworkStatus();
+    }, 20000);
+
+    return () => {
+      clearInterval(sessionInterval);
+      clearInterval(networkInterval);
+    };
   }, []);
 
   const handleLogoutPatron = async () => {
@@ -148,6 +167,7 @@ export const App: React.FC = () => {
 
       <Header
         session={session}
+        networkStatus={networkStatus}
         isAdmin={viewMode === 'ADMIN'}
         onLogoutPatron={handleLogoutPatron}
         onOpenAdmin={() => {
@@ -166,6 +186,7 @@ export const App: React.FC = () => {
           {viewMode === 'PATRON' ? (
             <PatronView
               session={session}
+              networkStatus={networkStatus}
               onOpenClaimModal={() => setIsClaimModalOpen(true)}
             />
           ) : (

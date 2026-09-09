@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, ArticleItem, PatronSession } from '../services/api';
+import { api, ArticleItem, PatronSession, NetworkStatusResponse } from '../services/api';
 import { ArticleCard } from '../components/patron/ArticleCard';
 import { ArticleCardSkeleton } from '../components/patron/ArticleCardSkeleton';
 import { ArticleDetailModal } from '../components/patron/ArticleDetailModal';
@@ -32,10 +32,20 @@ export interface FacetedFilters {
 
 interface PatronViewProps {
   session: PatronSession | null;
+  networkStatus?: NetworkStatusResponse | null;
   onOpenClaimModal: () => void;
 }
 
-export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModal }) => {
+export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, onOpenClaimModal }) => {
+  const hasAccess = !!session || !!networkStatus?.canReadDirectly;
+  const effectiveSession: PatronSession | null = session || (networkStatus?.canReadDirectly ? {
+    id: 'INTRANET_UMS',
+    token_code: 'UMS-INTRANET',
+    patron_name: 'Civitas Akademika UMS',
+    patron_nim: networkStatus.clientIp || 'Jaringan UMS',
+    expires_at: new Date(Date.now() + 86400000).toISOString(),
+    remaining_seconds: 86400,
+  } : null);
   const [articles, setArticles] = useState<ArticleItem[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
@@ -113,7 +123,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
     overrideFacets?: FacetedFilters,
     overrideQuery?: string
   ) => {
-    if (!session) {
+    if (!hasAccess) {
       setArticles([]);
       return;
     }
@@ -149,13 +159,13 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
   };
 
   useEffect(() => {
-    if (!session) {
+    if (!hasAccess) {
       setSelectedArticle(null);
       setActivePdf(null);
       setIsBrowseModalOpen(false);
     }
     loadArticles(1, pageSize);
-  }, [session?.id, facets]);
+  }, [session?.id, networkStatus?.canReadDirectly, facets]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -248,7 +258,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
   };
 
   const handleOpenPdf = (articleId: number, docId: number, title: string) => {
-    if (!session) {
+    if (!hasAccess) {
       onOpenClaimModal();
       return;
     }
@@ -299,6 +309,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
             <polyline points="14 2 14 8 20 8" />
             <line x1="16" y1="13" x2="8" y2="13" />
             <line x1="16" y1="17" x2="8" y2="17" />
+            <polyline points="10 9 9 9 8 9" />
           </svg>
         );
       case 'author':
@@ -313,180 +324,299 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
 
   return (
     <div className="page-transition">
-      {!session ? (
-        /* UI/UX Pro Max: Research Gateway Hero */
-        <div className="gateway-hero">
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '6px 16px',
-              backgroundColor: 'var(--color-surface-subtle)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 9999,
-              fontSize: 11.5,
-              fontWeight: 700,
-              fontFamily: 'var(--font-heading)',
-              letterSpacing: '0.8px',
-              color: 'var(--color-primary)',
-              marginBottom: 20,
-              textTransform: 'uppercase',
-            }}
-          >
-            <span>UPT Perpustakaan dan Layanan Digital UMS</span>
-            <span style={{ color: 'var(--color-accent)' }}>•</span>
-            <span>Repositori Naskah Khusus</span>
-          </div>
-
-          <h1
-            style={{
-              fontSize: 'clamp(24px, 4vw, 34px)',
-              fontWeight: 800,
-              color: 'var(--color-primary)',
-              marginBottom: 14,
-              letterSpacing: '-0.025em',
-              lineHeight: 1.25,
-            }}
-          >
-            Layanan Baca Karya Ilmiah Terbatas
-          </h1>
-
-          <p
-            style={{
-              color: 'var(--color-text-muted)',
-              fontSize: 15,
-              lineHeight: 1.7,
-              maxWidth: 620,
-              margin: '0 auto 28px',
-            }}
-          >
-            Platform pembacaan digital naskah repositori EPrints UMS yang berstatus <em>unpublish</em> (Buffer & Inbox).
-            Dirancang secara aman dengan proteksi kanvas dan penandaan identitas otomatis demi menjaga hak orisinalitas riset civitas akademik.
-          </p>
-
-          {/* Three Feature Highlight Pillars */}
-          <div className="gateway-features-grid">
-            <div className="gateway-feature-item">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-primary)', fontWeight: 700, fontSize: 13 }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
-                <span>Akses Bertiket Terbatas</span>
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
-                Sesi membaca terkontrol dengan batas durasi dan terikat pada perangkat Anda di area perpustakaan.
-              </div>
-            </div>
-
-            <div className="gateway-feature-item">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-primary)', fontWeight: 700, fontSize: 13 }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                </svg>
-                <span>Watermark Identitas</span>
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
-                Setiap halaman dokumen ditandai secara dinamis dengan nama & NIM Anda untuk perlindungan hak cipta.
-              </div>
-            </div>
-
-            <div className="gateway-feature-item">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-primary)', fontWeight: 700, fontSize: 13 }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-                <span>Kanvas View-Only</span>
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
-                Rendering langsung di browser tanpa mengekspos tautan unduh mentah file PDF naskah.
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
-            <button
-              type="button"
-              className="btn btn-primary btn-sso-animated"
-              onClick={onOpenClaimModal}
+      {!hasAccess ? (
+        networkStatus?.isBlocked ? (
+          /* Campus Network Restriction View (Mode: UMS_NETWORK_ONLY) */
+          <div className="gateway-hero" style={{ borderColor: 'rgba(239, 68, 68, 0.25)' }}>
+            <div
               style={{
-                padding: '14px 34px',
-                fontSize: 15,
-                fontWeight: 700,
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 8,
+                padding: '6px 16px',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: 9999,
+                fontSize: 11.5,
+                fontWeight: 700,
+                fontFamily: 'var(--font-heading)',
+                letterSpacing: '0.8px',
+                color: '#ef4444',
+                marginBottom: 20,
+                textTransform: 'uppercase',
               }}
             >
-              <span>Aktivasi Token Tiket Membaca</span>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="5" y1="12" x2="19" y2="12" />
-                <polyline points="12 5 19 12 12 19" />
-              </svg>
-            </button>
-          </div>
+              <span>AKSES KHUSUS KAMPUS UMS</span>
+              <span>•</span>
+              <span>INTRANET / WI-FI ONLY</span>
+            </div>
 
-          <div
-            style={{
-              marginTop: 28,
-              paddingTop: 18,
-              borderTop: '1px solid var(--color-border)',
-              fontSize: 12.5,
-              color: 'var(--color-text-light)',
-            }}
-          >
-            Belum memiliki tiket token? Silakan kunjungi <strong>Meja Layanan UPT Perpustakaan dan Layanan Digital UMS</strong> untuk mendapatkan tiket sesi membaca.
+            <h1
+              style={{
+                fontSize: 'clamp(24px, 4vw, 32px)',
+                fontWeight: 800,
+                color: 'var(--color-text)',
+                marginBottom: 14,
+                letterSpacing: '-0.025em',
+                lineHeight: 1.25,
+              }}
+            >
+              Akses Naskah Dibatasi Khusus Jaringan Kampus UMS
+            </h1>
+
+            <p
+              style={{
+                color: 'var(--color-text-muted)',
+                fontSize: 15,
+                lineHeight: 1.7,
+                maxWidth: 640,
+                margin: '0 auto 28px',
+              }}
+            >
+              Sistem repositori saat ini menerapkan kebijakan keamanan <strong>Jaringan Kampus UMS Saja</strong>. Perangkat Anda saat ini terdeteksi berada di luar jaringan resmi UMS (<code style={{ color: 'var(--color-primary)' }}>{networkStatus?.clientIp || 'Luar Kampus'}</code>).
+            </p>
+
+            <div
+              style={{
+                maxWidth: 600,
+                margin: '0 auto 24px',
+                padding: '16px 20px',
+                borderRadius: 12,
+                backgroundColor: 'var(--color-surface-subtle)',
+                border: '1px solid var(--color-border)',
+                textAlign: 'left',
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8, color: 'var(--color-text)' }}>
+                Petunjuk Akses Naskah Karya Ilmiah:
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
+                <li>Hubungkan perangkat Anda ke jaringan <strong>Wi-Fi Kampus UMS (Eduroam / UMS-Hotspot)</strong>.</li>
+                <li>Setelah terhubung ke Wi-Fi UMS, muat ulang (refresh) halaman ini untuk langsung membaca naskah secara otomatis tanpa token.</li>
+                <li>Atau kunjungi Gedung UPT Perpustakaan dan Layanan Digital UMS untuk mengakses terminal komputer layanan.</li>
+              </ul>
+            </div>
           </div>
-        </div>
+        ) : (
+          /* UI/UX Pro Max: Research Gateway Hero */
+          <div className="gateway-hero">
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 16px',
+                backgroundColor: 'var(--color-surface-subtle)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 9999,
+                fontSize: 11.5,
+                fontWeight: 700,
+                fontFamily: 'var(--font-heading)',
+                letterSpacing: '0.8px',
+                color: 'var(--color-primary)',
+                marginBottom: 20,
+                textTransform: 'uppercase',
+              }}
+            >
+              <span>UPT Perpustakaan dan Layanan Digital UMS</span>
+              <span style={{ color: 'var(--color-accent)' }}>•</span>
+              <span>Repositori Naskah Khusus</span>
+            </div>
+
+            <h1
+              style={{
+                fontSize: 'clamp(24px, 4vw, 34px)',
+                fontWeight: 800,
+                color: 'var(--color-primary)',
+                marginBottom: 14,
+                letterSpacing: '-0.025em',
+                lineHeight: 1.25,
+              }}
+            >
+              Layanan Baca Karya Ilmiah Terbatas
+            </h1>
+
+            <p
+              style={{
+                color: 'var(--color-text-muted)',
+                fontSize: 15,
+                lineHeight: 1.7,
+                maxWidth: 620,
+                margin: '0 auto 28px',
+              }}
+            >
+              Platform pembacaan digital naskah repositori EPrints UMS yang berstatus <em>unpublish</em> (Buffer & Inbox).
+              Dirancang secara aman dengan proteksi kanvas dan penandaan identitas otomatis demi menjaga hak orisinalitas riset civitas akademik.
+            </p>
+
+            {/* Three Feature Highlight Pillars */}
+            <div className="gateway-features-grid">
+              <div className="gateway-feature-item">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-primary)', fontWeight: 700, fontSize: 13 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  <span>Akses Bertiket Terbatas</span>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+                  Sesi membaca terkontrol dengan batas durasi dan terikat pada perangkat Anda di area perpustakaan.
+                </div>
+              </div>
+
+              <div className="gateway-feature-item">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-primary)', fontWeight: 700, fontSize: 13 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  </svg>
+                  <span>Watermark Identitas</span>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+                  Setiap halaman dokumen ditandai secara dinamis dengan nama & NIM Anda untuk perlindungan hak cipta.
+                </div>
+              </div>
+
+              <div className="gateway-feature-item">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-primary)', fontWeight: 700, fontSize: 13 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                  <span>Kanvas View-Only</span>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+                  Rendering langsung di browser tanpa mengekspos tautan unduh mentah file PDF naskah.
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
+              <button
+                type="button"
+                className="btn btn-primary btn-sso-animated"
+                onClick={onOpenClaimModal}
+                style={{
+                  padding: '14px 34px',
+                  fontSize: 15,
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <span>Aktivasi Token Tiket Membaca</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                  <polyline points="12 5 19 12 12 19" />
+                </svg>
+              </button>
+            </div>
+
+            <div
+              style={{
+                marginTop: 28,
+                paddingTop: 18,
+                borderTop: '1px solid var(--color-border)',
+                fontSize: 12.5,
+                color: 'var(--color-text-light)',
+              }}
+            >
+              Belum memiliki tiket token? Silakan kunjungi <strong>Meja Layanan UPT Perpustakaan dan Layanan Digital UMS</strong> untuk mendapatkan tiket sesi membaca.
+            </div>
+          </div>
+        )
       ) : (
         /* UI/UX Pro Max: Authenticated Research Desk */
         <div>
           {/* Active Session Identity Banner */}
-          <div className="session-active-card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <span
-                className="badge badge-publish"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px' }}
-              >
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />
-                Sesi Terverifikasi
-              </span>
-
-              <span style={{ fontSize: 13.5, color: 'var(--color-text)' }}>
-                Pemustaka: <strong>{session.patron_name}</strong> <span style={{ color: 'var(--color-text-muted)' }}>({session.patron_nim})</span>
-              </span>
-
-              <span style={{ color: 'var(--color-border-dark)' }}>•</span>
-
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Kode Tiket:</span>
-                <button
-                  type="button"
-                  className="copy-token-btn"
-                  onClick={handleCopyToken}
-                  title="Klik untuk menyalin kode token"
+          {session ? (
+            <div className="session-active-card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <span
+                  className="badge badge-publish"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px' }}
                 >
-                  <span>{session.token_code}</span>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </svg>
-                  {isCopied && <span style={{ color: 'var(--color-success)', fontSize: 10 }}>✓ Tersalin</span>}
-                </button>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />
+                  Sesi Terverifikasi
+                </span>
+
+                <span style={{ fontSize: 13.5, color: 'var(--color-text)' }}>
+                  Pemustaka: <strong>{session.patron_name}</strong> <span style={{ color: 'var(--color-text-muted)' }}>({session.patron_nim})</span>
+                </span>
+
+                <span style={{ color: 'var(--color-border-dark)' }}>•</span>
+
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Kode Tiket:</span>
+                  <button
+                    type="button"
+                    className="copy-token-btn"
+                    onClick={handleCopyToken}
+                    title="Klik untuk menyalin kode token"
+                  >
+                    <span>{session.token_code}</span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                    {isCopied && <span style={{ color: 'var(--color-success)', fontSize: 10 }}>✓ Tersalin</span>}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-muted)' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                <span>Perangkat Terkunci • Watermark Dinamis Aktif</span>
               </div>
             </div>
+          ) : (
+            <div
+              className="session-active-card"
+              style={{
+                borderColor: 'rgba(16, 185, 129, 0.3)',
+                backgroundColor: 'rgba(16, 185, 129, 0.05)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <span
+                  className="badge badge-publish"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    padding: '4px 10px',
+                    backgroundColor: '#10b981',
+                  }}
+                >
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />
+                  Jaringan Kampus UMS
+                </span>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-muted)' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-              <span>Perangkat Terkunci • Watermark Dinamis Aktif</span>
+                <span style={{ fontSize: 13.5, color: 'var(--color-text)' }}>
+                  Akses: <strong>Civitas Akademika UMS</strong>{' '}
+                  <span style={{ color: 'var(--color-text-muted)', fontFamily: 'monospace' }}>
+                    [IP: {networkStatus?.clientIp || '127.0.0.1'}]
+                  </span>
+                </span>
+
+                <span style={{ color: 'var(--color-border-dark)' }}>•</span>
+
+                <span style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>
+                  Akses Langsung Tanpa Token Aktif
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-muted)' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+                <span>Watermark Intranet Dinamis Aktif</span>
+              </div>
             </div>
-          </div>
-
+          )}
           {/* Recent Reads (Riwayat Baca Terakhir Pemustaka) */}
           {recentReads.length > 0 && (
             <div
@@ -1214,7 +1344,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, onOpenClaimModa
           articleId={activePdf.articleId}
           docId={activePdf.docId}
           articleTitle={activePdf.title}
-          session={session}
+          session={effectiveSession}
           onClose={() => setActivePdf(null)}
         />
       )}

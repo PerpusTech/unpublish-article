@@ -653,6 +653,44 @@ export const api = {
     if (!res.ok) throw new Error(json.error?.message || 'Gagal mengecek status koneksi database EPrints');
     return json;
   },
+
+  // === Security Settings & Campus Network Status ===
+  async getPatronNetworkStatus(): Promise<NetworkStatusResponse> {
+    const res = await fetch(`${API_BASE}/patron/network-status`);
+    if (!res.ok) {
+      throw new Error('Gagal memeriksa status jaringan');
+    }
+    return res.json();
+  },
+
+  async getAdminSecuritySettings(): Promise<SecuritySettingsResponse> {
+    const res = await fetch(`${API_BASE}/admin/settings/security`, {
+      credentials: 'include',
+      headers: getAdminHeaders(),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error?.message || 'Gagal memuat pengaturan keamanan');
+    }
+    return res.json();
+  },
+
+  async updateAdminSecuritySettings(
+    accessMode: AccessControlMode,
+    umsIpWhitelist: string[]
+  ): Promise<{ success: boolean; message: string; settings: SecuritySettings }> {
+    const res = await fetch(`${API_BASE}/admin/settings/security`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ accessMode, umsIpWhitelist }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error?.message || 'Gagal menyimpan pengaturan keamanan');
+    }
+    return res.json();
+  },
 };
 
 export const adminApi = api;
@@ -742,4 +780,65 @@ export interface AnalyticsData {
     EXPIRED: number;
     REVOKED: number;
   };
+}
+
+export type AccessControlMode = 'HYBRID' | 'UMS_NETWORK_ONLY' | 'TOKEN_ONLY';
+
+export interface SecuritySettings {
+  accessMode: AccessControlMode;
+  umsIpWhitelist: string[];
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface SecuritySettingsResponse {
+  settings: SecuritySettings;
+  currentClientIp: string;
+  isCurrentClientInUmsNetwork: boolean;
+}
+
+export interface NetworkStatusResponse {
+  clientIp: string;
+  isUmsNetwork: boolean;
+  accessMode: AccessControlMode;
+  canReadDirectly: boolean;
+  isTokenRequired: boolean;
+  isBlocked: boolean;
+  message: string;
+}
+
+// Security & Network Status APIs
+export async function getPatronNetworkStatus(): Promise<NetworkStatusResponse> {
+  const res = await fetch(`${API_BASE}/patron/network-status`);
+  if (!res.ok) {
+    throw new Error('Gagal memeriksa status jaringan');
+  }
+  return res.json();
+}
+
+export async function getAdminSecuritySettings(): Promise<SecuritySettingsResponse> {
+  const res = await fetch(`${API_BASE}/admin/settings/security`, {
+    headers: getAdminHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error?.message || 'Gagal memuat pengaturan keamanan');
+  }
+  return res.json();
+}
+
+export async function updateAdminSecuritySettings(
+  accessMode: AccessControlMode,
+  umsIpWhitelist: string[]
+): Promise<{ success: boolean; message: string; settings: SecuritySettings }> {
+  const res = await fetch(`${API_BASE}/admin/settings/security`, {
+    method: 'PUT',
+    headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ accessMode, umsIpWhitelist }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error?.message || 'Gagal menyimpan pengaturan keamanan');
+  }
+  return res.json();
 }

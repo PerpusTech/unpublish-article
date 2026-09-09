@@ -147,6 +147,31 @@ export async function initAppDb(): Promise<void> {
     console.log('[DB] Seeded default librarian: pustakawan@ums.ac.id');
   }
 
+  // 4. System Settings Table (Dynamic Access Mode & UMS Network Whitelist)
+  await query.run(`
+    CREATE TABLE IF NOT EXISTS system_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  const accessModeSetting = await query.get('SELECT value FROM system_settings WHERE key = ?', ['access_mode']);
+  if (!accessModeSetting) {
+    await query.run(`INSERT INTO system_settings (key, value) VALUES ('access_mode', 'HYBRID')`);
+    await query.run(`INSERT INTO system_settings (key, value) VALUES ('ums_ip_whitelist', ?)`, [
+      JSON.stringify([
+        '10.0.0.0/8',
+        '172.16.0.0/12',
+        '192.168.0.0/16',
+        '127.0.0.1',
+        '::1',
+        'localhost',
+      ])
+    ]);
+    console.log('[DB] Seeded default security settings: Mode HYBRID (Jaringan UMS + Token)');
+  }
+
   // Sync all live EPrints Repository Administrators into local admin_users table
   try {
     const { CasService } = await import('../services/casService');

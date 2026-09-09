@@ -8,6 +8,7 @@ import { AnalyticsDashboard } from '../components/admin/AnalyticsDashboard';
 import { DatabaseBackupView } from '../components/admin/DatabaseBackupView';
 import { DbStatusPill } from '../components/admin/DbStatusPill';
 import { EPrintsDbStatusModal } from '../components/admin/EPrintsDbStatusModal';
+import { SecuritySettingsView } from '../components/admin/SecuritySettingsView';
 
 interface AdminViewProps {
   onBackToPatron: () => void;
@@ -21,7 +22,7 @@ interface ToastState {
 export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
   const [adminUser, setAdminUser] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'TOKENS' | 'ANALYTICS' | 'AUDIT' | 'USERS' | 'SYSTEM' | 'BACKUP'>('TOKENS');
+  const [activeTab, setActiveTab] = useState<'TOKENS' | 'ANALYTICS' | 'AUDIT' | 'USERS' | 'SECURITY' | 'SYSTEM' | 'BACKUP'>('TOKENS');
 
   // Token management
   const [tokens, setTokens] = useState<TokenAdminItem[]>([]);
@@ -557,6 +558,17 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
 
         <button
           type="button"
+          className={`admin-tab-btn ${activeTab === 'SECURITY' ? 'active' : ''}`}
+          onClick={() => setActiveTab('SECURITY')}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          <span>Keamanan & Jaringan UMS</span>
+        </button>
+
+        <button
+          type="button"
           className={`admin-tab-btn ${activeTab === 'SYSTEM' ? 'active' : ''}`}
           onClick={() => setActiveTab('SYSTEM')}
         >
@@ -696,6 +708,10 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {activeTab === 'SECURITY' && (
+        <SecuritySettingsView onShowToast={showToast} />
       )}
 
       {activeTab === 'BACKUP' && (

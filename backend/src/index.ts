@@ -10,6 +10,7 @@ import { AuditController } from './controllers/auditController';
 import { UserController } from './controllers/userController';
 import { AnalyticsController } from './controllers/analyticsController';
 import { BackupController } from './controllers/backupController';
+import { SettingController } from './controllers/settingController';
 import { requireAdminAuth } from './middlewares/adminAuth';
 import { requirePatronSession, optionalPatronSession } from './middlewares/patronAuth';
 import { TokenService } from './services/tokenService';
@@ -65,6 +66,10 @@ api.get('/admin/backup/download', requireAdminAuth, BackupController.downloadBac
 api.get('/admin/backup/export-json', requireAdminAuth, BackupController.exportJson);
 api.post('/admin/backup/optimize', requireAdminAuth, BackupController.optimizeDatabase);
 
+// ================= SECURITY & CAMPUS NETWORK SETTINGS =================
+api.get('/admin/settings/security', requireAdminAuth, SettingController.getSecuritySettings);
+api.put('/admin/settings/security', requireAdminAuth, SettingController.updateSecuritySettings);
+
 // ================= USER MANAGEMENT ROUTES =================
 api.get('/admin/users', requireAdminAuth, UserController.listUsers);
 api.get('/admin/users/export', requireAdminAuth, UserController.exportCsv);
@@ -73,6 +78,7 @@ api.put('/admin/users/:email', requireAdminAuth, UserController.updateUser);
 api.delete('/admin/users/:email', requireAdminAuth, UserController.deleteUser);
 
 // ================= PATRON SESSION & TELEMETRY ROUTES =================
+api.get('/patron/network-status', SettingController.getPatronNetworkStatus);
 api.post('/patron/session/claim', TokenController.claimToken);
 api.get('/patron/session/status', TokenController.getSessionStatus);
 api.post('/patron/session/logout', TokenController.logout);
