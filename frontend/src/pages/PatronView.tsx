@@ -805,7 +805,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
                     </span>
                     <span className="patron-divider">|</span>
                     <span className="patron-meta-note">
-                      Identitas belum terdaftar di perangkat ini
+                      Anda sedang login sebagai pengunjung
                     </span>
                   </div>
 
@@ -816,7 +816,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
                       style={{ padding: '4px 12px', fontSize: 12, fontWeight: 600 }}
                       onClick={() => setIsIntranetCheckinOpen(true)}
                     >
-                      Isi Identitas Pemustaka
+                      Masuk sebagai Pemustaka
                     </button>
                   </div>
                 </>

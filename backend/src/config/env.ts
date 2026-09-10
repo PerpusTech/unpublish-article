@@ -29,17 +29,17 @@ export const ENV = {
   // EPrints Database (Read-Only)
   // Check both EPRINTS_USE_MOCK and whether DB_HOST is set
   EPRINTS_USE_MOCK: process.env.EPRINTS_USE_MOCK === 'true',
-  EPRINTS_DB_HOST: process.env.DB_HOST || process.env.EPRINTS_DB_HOST || '10.12.0.6',
+  EPRINTS_DB_HOST: process.env.DB_HOST || process.env.EPRINTS_DB_HOST || '127.0.0.1',
   EPRINTS_DB_PORT: parseInt(process.env.DB_PORT || process.env.EPRINTS_DB_PORT || '3306', 10),
-  EPRINTS_DB_NAME: process.env.DB_DATABASE || process.env.EPRINTS_DB_NAME || 'etd2018',
-  EPRINTS_DB_USER: process.env.DB_USERNAME || process.env.EPRINTS_DB_USER || 'asharul',
+  EPRINTS_DB_NAME: process.env.DB_DATABASE || process.env.EPRINTS_DB_NAME || 'eprints',
+  EPRINTS_DB_USER: process.env.DB_USERNAME || process.env.EPRINTS_DB_USER || '',
   EPRINTS_DB_PASSWORD: process.env.DB_PASSWORD || process.env.EPRINTS_DB_PASSWORD || '',
 
   // Storage Mount Path for PDFs
   EPRINTS_DOCUMENTS_PATH: process.env.EPRINTS_DOCUMENTS_PATH || path.join(__dirname, '../../mock-storage/documents'),
 
   // EPrints HTTP Origin for live document streaming
-  EPRINTS_BASE_URL: process.env.EPRINTS_BASE_URL || 'https://10.12.0.6',
-  EPRINTS_HTTP_USER: process.env.EPRINTS_HTTP_USER || process.env.DB_USERNAME || 'masharulmaali',
-  EPRINTS_HTTP_PASSWORD: process.env.EPRINTS_HTTP_PASSWORD || process.env.DB_PASSWORD || '3309m708',
+  EPRINTS_BASE_URL: process.env.EPRINTS_BASE_URL || 'http://localhost',
+  EPRINTS_HTTP_USER: process.env.EPRINTS_HTTP_USER || process.env.DB_USERNAME || '',
+  EPRINTS_HTTP_PASSWORD: process.env.EPRINTS_HTTP_PASSWORD || process.env.DB_PASSWORD || '',
 };

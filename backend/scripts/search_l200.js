@@ -2,10 +2,10 @@ const mysql = require('mysql2/promise');
 
 async function search() {
   const pool = mysql.createPool({
-    host: process.env.EPRINTS_DB_HOST || '10.12.0.6',
+    host: process.env.EPRINTS_DB_HOST || '127.0.0.1',
     port: parseInt(process.env.EPRINTS_DB_PORT || '3306', 10),
-    user: process.env.EPRINTS_DB_USER || 'asharul',
-    password: process.env.EPRINTS_DB_PASSWORD || 'Ash@2026',
+    user: process.env.EPRINTS_DB_USER || '',
+    password: process.env.EPRINTS_DB_PASSWORD || '',
     database: process.env.EPRINTS_DB_NAME || 'etd2018',
     waitForConnections: true,
     connectionLimit: 5,

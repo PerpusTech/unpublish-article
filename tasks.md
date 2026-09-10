@@ -110,3 +110,22 @@ Buka gpedit.msc di Windows PC perpustakaan.
 Masuk ke: User Configuration ➔ Administrative Templates ➔ Windows Components ➔ Tablet PC ➔ Accessories.
 Klik ganda Do not allow Snipping Tool to run ➔ Pilih Enabled.
 Dengan cara ini, tombol Win + Shift + S maupun aplikasi pemotong layar akan dinonaktifkan total oleh Windows pada PC layanan tersebut.
+
+
+
+Cara Kerja Pembatasan untuk 2 Komputer Khusus:
+Cukup masukkan 2 alamat IP komputer tersebut ke dalam daftar Daftar Subnet / IP Jaringan Kampus UMS (misalnya 192.168.1.101 dan 192.168.1.102) dan hapus rentang subnet luas lainnya.
+
+Efeknya sesuai kebijakan yang dipilih:
+
+Jika Mode: Jaringan Kampus UMS Saja (UMS_NETWORK_ONLY):
+
+Hanya 2 komputer tersebut yang diizinkan membuka dan membaca naskah.
+Perangkat/komputer lain di luar 2 IP tersebut (baik di perpustakaan maupun di luar) akan langsung ditolak secara otomatis.
+Jika Mode: Fleksibel (Hybrid) (HYBRID):
+
+2 komputer tersebut menjadi Dedicated Reading Station (bisa langsung baca naskah tanpa perlu token/tiket).
+Perangkat/laptop lain di luar 2 IP tersebut tetap bisa baca, tetapi wajib meminta tiket token ke pustakawan meja layanan.
+Tips & Rekomendasi:
+Static IP / DHCP Reservation: Pastikan 2 komputer tersebut diset IP Statis di pengaturan Windows/LAN atau dilakukan DHCP Reservation (binding MAC Address) di router perpustakaan agar IP-nya tidak berubah saat komputer dimatikan/dinyalakan.
+Simulator Uji IP: Anda dapat memanfaatkan fitur Simulator Uji Alamat IP di halaman Pengaturan Keamanan untuk mengetes apakah IP komputer tersebut sudah valid dan dikenali oleh sistem sebelum digunakan oleh pemustaka.
