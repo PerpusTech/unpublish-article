@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { api, TokenAdminItem } from '../../services/api';
 import { PaginationControls } from '../common/PaginationControls';
+import { ConfirmModal } from '../common/ConfirmModal';
 import { ShareTokenModal } from './ShareTokenModal';
 import { ThermalSlipModal, ThermalSlipItem } from './ThermalSlipModal';
 import { copyToClipboard } from '../../utils/clipboard';
@@ -9,12 +10,14 @@ import { copyToClipboard } from '../../utils/clipboard';
 interface ActiveSessionsTableProps {
   tokens?: TokenAdminItem[];
   loading?: boolean;
+  currentAdminRole?: string;
   onRefresh?: () => void;
   onOpenCreate: () => void;
   onShowToast?: (message: string, type?: 'success' | 'danger') => void;
 }
 
 export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
+  currentAdminRole,
   onRefresh,
   onOpenCreate,
   onShowToast,
@@ -39,6 +42,7 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [copiedTokenId, setCopiedTokenId] = useState<string | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<{ id: string; name: string; tokenCode: string } | null>(null);
+  const [deleteTargetToken, setDeleteTargetToken] = useState<{ id: string; code: string; patronName: string } | null>(null);
 
   // Share & Thermal Print states
   const [shareModalOpen, setShareModalOpen] = useState<boolean>(false);
@@ -156,8 +160,6 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
     } catch (err: any) {
       if (onShowToast) {
         onShowToast(err.message || 'Gagal memperpanjang sesi.', 'danger');
-      } else {
-        alert(err.message || 'Gagal memperpanjang sesi.');
       }
     } finally {
       setActionLoading(null);
@@ -179,13 +181,35 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
     } catch (err: any) {
       if (onShowToast) {
         onShowToast(err.message || 'Gagal mencabut token.', 'danger');
-      } else {
-        alert(err.message || 'Gagal mencabut token.');
       }
     } finally {
       setActionLoading(null);
     }
   };
+
+  const confirmDeleteToken = async () => {
+    if (!deleteTargetToken) return;
+    const { id, code } = deleteTargetToken;
+
+    setActionLoading(id);
+    try {
+      await api.deleteToken(id);
+      if (onShowToast) {
+        onShowToast(`Tiket ${code} berhasil dihapus permanen.`, 'success');
+      }
+      setDeleteTargetToken(null);
+      fetchTokensData();
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      if (onShowToast) {
+        onShowToast(err.message || 'Gagal menghapus tiket.', 'danger');
+      }
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const isSuperAdmin = currentAdminRole === 'SUPER_ADMIN';
 
   const renderBadge = (status: string) => {
     switch (status) {
@@ -624,6 +648,34 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
                             <span>Cabut</span>
                           </button>
                         )}
+
+                        {/* Super Admin Permanent Delete Button */}
+                        {isSuperAdmin && (
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-sm"
+                            onClick={() => setDeleteTargetToken({ id: token.id, code: token.token_code, patronName: token.patron_name })}
+                            disabled={actionLoading === token.id}
+                            title="Hapus permanen data tiket/sesi ini (Khusus Super Admin)"
+                            style={{
+                              fontSize: 11.5,
+                              padding: '4px 7px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              background: 'rgba(239, 68, 68, 0.1)',
+                              color: 'var(--color-danger)',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              fontWeight: 700,
+                            }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                            <span>Hapus</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -766,6 +818,28 @@ export const ActiveSessionsTable: React.FC<ActiveSessionsTableProps> = ({
         isOpen={thermalModalOpen}
         onClose={() => setThermalModalOpen(false)}
         items={thermalItems}
+      />
+
+      {/* Modern Confirm Deletion Modal */}
+      <ConfirmModal
+        isOpen={Boolean(deleteTargetToken)}
+        title="Hapus Tiket / Sesi Baca"
+        message={
+          <div>
+            Apakah Anda yakin ingin menghapus permanen tiket{' '}
+            <code style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+              {deleteTargetToken?.code}
+            </code>{' '}
+            milik <strong>{deleteTargetToken?.patronName}</strong>? Riwayat sesi dan akses membaca pemustaka akan dihapus permanen.
+          </div>
+        }
+        confirmText="Hapus Permanen"
+        confirmVariant="danger"
+        isLoading={Boolean(actionLoading && deleteTargetToken && actionLoading === deleteTargetToken.id)}
+        onConfirm={confirmDeleteToken}
+        onClose={() => {
+          if (!actionLoading) setDeleteTargetToken(null);
+        }}
       />
     </div>
   );

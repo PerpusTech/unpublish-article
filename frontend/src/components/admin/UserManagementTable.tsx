@@ -3,14 +3,18 @@ import { createPortal } from 'react-dom';
 import { api, UserItem } from '../../services/api';
 import { UserModal } from './UserModal';
 import { PaginationControls } from '../common/PaginationControls';
+import { ConfirmModal } from '../common/ConfirmModal';
+import { formatDateTime, formatDate } from '../../utils/date';
 
 interface UserManagementTableProps {
   currentAdminEmail?: string;
+  currentAdminRole?: string;
   onShowToast: (message: string, type?: 'success' | 'danger') => void;
 }
 
 export const UserManagementTable: React.FC<UserManagementTableProps> = ({
   currentAdminEmail,
+  currentAdminRole,
   onShowToast,
 }) => {
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -34,6 +38,15 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
   const [inspectingSsoUser, setInspectingSsoUser] = useState<UserItem | null>(null);
+
+  // Confirm modal state
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    message: React.ReactNode;
+    confirmText: string;
+    confirmVariant: 'danger' | 'warning' | 'primary';
+    action: () => Promise<void>;
+  } | null>(null);
 
   // Action loading per row
   const [actionLoadingEmail, setActionLoadingEmail] = useState<string | null>(null);
@@ -95,66 +108,94 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
   };
 
   // Quick toggle role: ADMIN <-> USER
-  const handleToggleRole = async (user: UserItem) => {
+  const promptToggleRole = (user: UserItem) => {
     const isCurrentlyAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
     const newRole = isCurrentlyAdmin ? 'USER' : 'ADMIN';
-    const actionText = isCurrentlyAdmin
-      ? `turunkan hak akses ${user.name} menjadi USER biasa (tidak bisa akses panel pustakawan)`
-      : `jadikan ${user.name} sebagai ADMIN (berhak akses panel pustakawan & kelola tiket)`;
 
-    if (!window.confirm(`Apakah Anda yakin ingin ${actionText}?`)) {
-      return;
-    }
-
-    setActionLoadingEmail(user.email);
-    try {
-      await api.updateUser(user.email, { role: newRole });
-      onShowToast(`Hak akses ${user.name} berhasil diubah menjadi ${newRole}.`);
-      fetchUsers();
-    } catch (err: any) {
-      onShowToast(err.message || 'Gagal memperbarui hak akses.', 'danger');
-    } finally {
-      setActionLoadingEmail(null);
-    }
+    setConfirmAction({
+      title: isCurrentlyAdmin ? 'Turunkan Hak Akses Pengguna' : 'Promosikan Menjadi Admin',
+      message: (
+        <div>
+          Apakah Anda yakin ingin {isCurrentlyAdmin ? 'menurunkan peran' : 'menjadikan'}{' '}
+          <strong>{user.name}</strong> ({user.email}) sebagai <strong>{newRole}</strong>?{' '}
+          {isCurrentlyAdmin
+            ? 'Pengguna tidak akan dapat mengakses panel meja layanan pustakawan lagi.'
+            : 'Pengguna akan mendapatkan hak akses ke meja layanan dan kelola tiket.'}
+        </div>
+      ),
+      confirmText: isCurrentlyAdmin ? 'Jadikan User' : 'Set Admin',
+      confirmVariant: isCurrentlyAdmin ? 'warning' : 'primary',
+      action: async () => {
+        setActionLoadingEmail(user.email);
+        try {
+          await api.updateUser(user.email, { role: newRole });
+          onShowToast(`Hak akses ${user.name} berhasil diubah menjadi ${newRole}.`);
+          fetchUsers();
+        } catch (err: any) {
+          onShowToast(err.message || 'Gagal memperbarui hak akses.', 'danger');
+        } finally {
+          setActionLoadingEmail(null);
+        }
+      },
+    });
   };
 
   // Toggle active / inactive status
-  const handleToggleActive = async (user: UserItem) => {
+  const promptToggleActive = (user: UserItem) => {
     const newStatus = user.is_active === 1 ? 0 : 1;
-    const actionText = newStatus === 1 ? 'mengaktifkan kembali' : 'menonaktifkan';
+    const isDeactivating = newStatus === 0;
 
-    if (!window.confirm(`Yakin ingin ${actionText} akun ${user.name} (${user.email})?`)) {
-      return;
-    }
-
-    setActionLoadingEmail(user.email);
-    try {
-      await api.updateUser(user.email, { is_active: newStatus });
-      onShowToast(`Akun ${user.name} berhasil ${newStatus === 1 ? 'diaktifkan' : 'dinonaktifkan'}.`);
-      fetchUsers();
-    } catch (err: any) {
-      onShowToast(err.message || 'Gagal mengubah status akun.', 'danger');
-    } finally {
-      setActionLoadingEmail(null);
-    }
+    setConfirmAction({
+      title: isDeactivating ? 'Nonaktifkan Akun Pengguna' : 'Aktifkan Akun Pengguna',
+      message: (
+        <div>
+          Apakah Anda yakin ingin {isDeactivating ? 'menonaktifkan' : 'mengaktifkan kembali'} akun{' '}
+          <strong>{user.name}</strong> ({user.email})?{' '}
+          {isDeactivating ? 'Pengguna tidak akan dapat login ke sistem.' : 'Pengguna dapat kembali mengakses sistem.'}
+        </div>
+      ),
+      confirmText: isDeactivating ? 'Nonaktifkan' : 'Aktifkan',
+      confirmVariant: isDeactivating ? 'warning' : 'primary',
+      action: async () => {
+        setActionLoadingEmail(user.email);
+        try {
+          await api.updateUser(user.email, { is_active: newStatus });
+          onShowToast(`Akun ${user.name} berhasil ${newStatus === 1 ? 'diaktifkan' : 'dinonaktifkan'}.`);
+          fetchUsers();
+        } catch (err: any) {
+          onShowToast(err.message || 'Gagal mengubah status akun.', 'danger');
+        } finally {
+          setActionLoadingEmail(null);
+        }
+      },
+    });
   };
 
   // Delete user
-  const handleDelete = async (user: UserItem) => {
-    if (!window.confirm(`Hapus permanen akun pengguna ${user.name} (${user.email}) dari sistem?`)) {
-      return;
-    }
-
-    setActionLoadingEmail(user.email);
-    try {
-      await api.deleteUser(user.email);
-      onShowToast(`Akun ${user.name} berhasil dihapus.`);
-      fetchUsers();
-    } catch (err: any) {
-      onShowToast(err.message || 'Gagal menghapus pengguna.', 'danger');
-    } finally {
-      setActionLoadingEmail(null);
-    }
+  const promptDelete = (user: UserItem) => {
+    setConfirmAction({
+      title: 'Hapus Permanen Akun Pengguna',
+      message: (
+        <div>
+          Apakah Anda yakin ingin menghapus permanen akun <strong>{user.name}</strong> (
+          <code>{user.email}</code>)? Seluruh data profil dan riwayat akun ini akan dihapus dari sistem.
+        </div>
+      ),
+      confirmText: 'Hapus Permanen',
+      confirmVariant: 'danger',
+      action: async () => {
+        setActionLoadingEmail(user.email);
+        try {
+          await api.deleteUser(user.email);
+          onShowToast(`Akun ${user.name} berhasil dihapus.`);
+          fetchUsers();
+        } catch (err: any) {
+          onShowToast(err.message || 'Gagal menghapus pengguna.', 'danger');
+        } finally {
+          setActionLoadingEmail(null);
+        }
+      },
+    });
   };
 
   const isSelf = (email: string) => {
@@ -397,7 +438,7 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
                         </button>
                       </div>
                       <div style={{ fontSize: 11.5, color: 'var(--color-text-light)', marginTop: 2 }}>
-                        Terdaftar: {u.created_at ? new Date(u.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                        Terdaftar: {formatDate(u.created_at)}
                       </div>
                     </td>
 
@@ -443,7 +484,7 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
 
                     <td style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
                       {u.last_login_at
-                        ? new Date(u.last_login_at).toLocaleString('id-ID', {
+                        ? formatDateTime(u.last_login_at, {
                             day: 'numeric',
                             month: 'short',
                             hour: '2-digit',
@@ -459,7 +500,7 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
                           <button
                             type="button"
                             className={`btn btn-sm ${isAdmin ? 'btn-secondary' : 'btn-primary'}`}
-                            onClick={() => handleToggleRole(u)}
+                            onClick={() => promptToggleRole(u)}
                             disabled={isActionBusy}
                             title={isAdmin ? 'Ubah role menjadi USER biasa' : 'Promosikan menjadi ADMIN meja layanan'}
                             style={{ fontSize: 11, padding: '4px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
@@ -484,7 +525,7 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"
-                            onClick={() => handleToggleActive(u)}
+                            onClick={() => promptToggleActive(u)}
                             disabled={isActionBusy}
                             title={u.is_active === 1 ? 'Nonaktifkan akun' : 'Aktifkan akun'}
                             style={{ fontSize: 11, padding: '4px 8px' }}
@@ -494,26 +535,48 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
                         )}
 
                         {/* Edit Button */}
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => {
-                            setEditingUser(u);
-                            setIsModalOpen(true);
-                          }}
-                          disabled={isActionBusy}
-                          title="Edit nama dan hak akses"
-                          style={{ fontSize: 11, padding: '4px 8px' }}
-                        >
-                          Edit
-                        </button>
+                        {isSuperAdmin && currentAdminRole !== 'SUPER_ADMIN' ? (
+                          <span
+                            className="badge badge-secondary"
+                            style={{
+                              fontSize: 10.5,
+                              padding: '5px 8px',
+                              opacity: 0.85,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              cursor: 'not-allowed',
+                            }}
+                            title="Akun Super Admin terproteksi. Hanya sesama Super Admin yang berwenang mengubah akun ini."
+                          >
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                            <span>Terproteksi</span>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => {
+                              setEditingUser(u);
+                              setIsModalOpen(true);
+                            }}
+                            disabled={isActionBusy}
+                            title="Edit nama dan hak akses"
+                            style={{ fontSize: 11, padding: '4px 8px' }}
+                          >
+                            Edit
+                          </button>
+                        )}
 
                         {/* Delete Button */}
-                        {!isSuperAdmin && !self && (
+                        {currentAdminRole === 'SUPER_ADMIN' && !isSuperAdmin && !self && (
                           <button
                             type="button"
                             className="btn btn-danger btn-sm"
-                            onClick={() => handleDelete(u)}
+                            onClick={() => promptDelete(u)}
                             disabled={isActionBusy}
                             title="Hapus pengguna"
                             style={{ fontSize: 11, padding: '4px 8px' }}
@@ -548,6 +611,7 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
       <UserModal
         isOpen={isModalOpen}
         editUser={editingUser}
+        currentAdminRole={currentAdminRole}
         onClose={() => {
           setIsModalOpen(false);
           setEditingUser(null);
@@ -646,7 +710,7 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
                 </div>
 
                 <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border)', paddingTop: 10 }}>
-                  Login Terakhir: {inspectingSsoUser.last_login_at ? new Date(inspectingSsoUser.last_login_at).toLocaleString('id-ID') : 'Belum pernah login'}
+                  Login Terakhir: {inspectingSsoUser.last_login_at ? formatDateTime(inspectingSsoUser.last_login_at, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Belum pernah login'}
                 </div>
               </div>
 
@@ -659,6 +723,25 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
           </div>,
           document.body
         )}
+
+      {/* Modern Confirm Action Modal */}
+      <ConfirmModal
+        isOpen={Boolean(confirmAction)}
+        title={confirmAction?.title || ''}
+        message={confirmAction?.message || ''}
+        confirmText={confirmAction?.confirmText || 'Konfirmasi'}
+        confirmVariant={confirmAction?.confirmVariant || 'danger'}
+        isLoading={Boolean(actionLoadingEmail)}
+        onConfirm={async () => {
+          if (confirmAction) {
+            await confirmAction.action();
+            setConfirmAction(null);
+          }
+        }}
+        onClose={() => {
+          if (!actionLoadingEmail) setConfirmAction(null);
+        }}
+      />
     </div>
   );
 };

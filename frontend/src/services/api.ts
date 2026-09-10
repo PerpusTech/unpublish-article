@@ -534,6 +534,18 @@ export const api = {
     }
   },
 
+  async deleteToken(id: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/admin/tokens/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: getAdminHeaders(),
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || 'Gagal menghapus sesi tiket');
+    }
+  },
+
   async getAuditLogs(params?: {
     search?: string;
     nim?: string;
@@ -561,6 +573,31 @@ export const api = {
     const json = await res.json();
     if (!res.ok) throw new Error(json.error?.message || 'Gagal memuat audit log');
     return json;
+  },
+
+  async deleteAuditLog(id: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/admin/audit-logs/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: getAdminHeaders(),
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || 'Gagal menghapus catatan log audit');
+    }
+  },
+
+  async deleteBulkAuditLogs(ids: string[]): Promise<void> {
+    const res = await fetch(`${API_BASE}/admin/audit-logs`, {
+      method: 'DELETE',
+      headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || 'Gagal menghapus log audit');
+    }
   },
 
   getAuditExportUrl(filter?: { search?: string; action?: string; nim?: string } | string): string {
@@ -610,7 +647,7 @@ export const api = {
     return `${API_BASE}/admin/users/export${qs.toString() ? `?${qs.toString()}` : ''}`;
   },
 
-  async createUser(data: { email: string; name: string; role: 'ADMIN' | 'USER' }): Promise<{ success: boolean; user: UserItem; message?: string }> {
+  async createUser(data: { email: string; name: string; role: 'SUPER_ADMIN' | 'ADMIN' | 'USER' }): Promise<{ success: boolean; user: UserItem; message?: string }> {
     const res = await fetch(`${API_BASE}/admin/users`, {
       method: 'POST',
       headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
@@ -624,7 +661,7 @@ export const api = {
 
   async updateUser(
     email: string,
-    data: { role?: 'ADMIN' | 'USER'; is_active?: number; name?: string }
+    data: { role?: 'SUPER_ADMIN' | 'ADMIN' | 'USER'; is_active?: number; name?: string }
   ): Promise<{ success: boolean; user: UserItem; message?: string }> {
     const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(email)}`, {
       method: 'PUT',

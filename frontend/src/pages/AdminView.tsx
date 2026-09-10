@@ -599,6 +599,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
         <ActiveSessionsTable
           tokens={tokens}
           loading={tokensLoading}
+          currentAdminRole={adminUser.role}
           onRefresh={fetchTokens}
           onOpenCreate={() => setIsGeneratorOpen(true)}
           onShowToast={showToast}
@@ -609,11 +610,17 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
         <AnalyticsDashboard onShowToast={showToast} />
       )}
 
-      {activeTab === 'AUDIT' && <AuditLogTable />}
+      {activeTab === 'AUDIT' && (
+        <AuditLogTable
+          currentAdminRole={adminUser.role}
+          onShowToast={showToast}
+        />
+      )}
 
       {activeTab === 'USERS' && (
         <UserManagementTable
           currentAdminEmail={adminUser.email}
+          currentAdminRole={adminUser.role}
           onShowToast={showToast}
         />
       )}

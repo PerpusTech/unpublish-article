@@ -58,10 +58,30 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
   const [pendingPdf, setPendingPdf] = useState<{ articleId: number; docId: number; title: string } | null>(null);
 
   useEffect(() => {
-    if (session) {
+    if (!session) {
+      setIntranetSession(null);
+    } else {
       setIntranetSession(session);
     }
   }, [session]);
+
+  // Listen to cross-tab session logout / login events
+  useEffect(() => {
+    const unsubscribe = subscribeSessionSync({
+      onLogout: () => {
+        setIntranetSession(null);
+        setActivePdf(null);
+        setSelectedArticle(null);
+      },
+      onLogin: (newSession) => {
+        setIntranetSession(newSession);
+      },
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   const effectiveSession: PatronSession | null = session || intranetSession || (networkStatus?.canReadDirectly ? {
     id: 'INTRANET_UMS',

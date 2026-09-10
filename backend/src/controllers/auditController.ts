@@ -48,4 +48,75 @@ export class AuditController {
       });
     }
   }
+
+  /**
+   * Delete single audit log entry (Super Admin only)
+   */
+  public static async deleteLog(req: Request, res: Response): Promise<void> {
+    const currentAdminRole = (req.admin?.role || '').toUpperCase();
+    if (currentAdminRole !== 'SUPER_ADMIN') {
+      res.status(403).json({
+        error: {
+          code: 'FORBIDDEN_SUPER_ADMIN_ONLY',
+          message: 'Akses ditolak. Hanya Super Admin yang berwenang menghapus catatan riwayat audit log.'
+        }
+      });
+      return;
+    }
+
+    const { id } = req.params;
+    if (!id) {
+      res.status(400).json({ error: { code: 'INVALID_ID', message: 'ID log audit wajib disertakan.' } });
+      return;
+    }
+
+    try {
+      const { query } = await import('../config/appDb');
+      await query.run('DELETE FROM audit_logs WHERE id = ?', [id]);
+      res.json({ success: true, message: 'Catatan log audit berhasil dihapus.' });
+    } catch (err: any) {
+      res.status(500).json({
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: err.message || 'Gagal menghapus log audit.'
+        }
+      });
+    }
+  }
+
+  /**
+   * Delete bulk audit log entries (Super Admin only)
+   */
+  public static async deleteBulkLogs(req: Request, res: Response): Promise<void> {
+    const currentAdminRole = (req.admin?.role || '').toUpperCase();
+    if (currentAdminRole !== 'SUPER_ADMIN') {
+      res.status(403).json({
+        error: {
+          code: 'FORBIDDEN_SUPER_ADMIN_ONLY',
+          message: 'Akses ditolak. Hanya Super Admin yang berwenang menghapus catatan riwayat audit log.'
+        }
+      });
+      return;
+    }
+
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Daftar ID log yang akan dihapus tidak boleh kosong.' } });
+      return;
+    }
+
+    try {
+      const { query } = await import('../config/appDb');
+      const placeholders = ids.map(() => '?').join(',');
+      await query.run(`DELETE FROM audit_logs WHERE id IN (${placeholders})`, ids);
+      res.json({ success: true, message: `Berhasil menghapus ${ids.length} catatan log audit.` });
+    } catch (err: any) {
+      res.status(500).json({
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: err.message || 'Gagal menghapus catatan log audit.'
+        }
+      });
+    }
+  }
 }

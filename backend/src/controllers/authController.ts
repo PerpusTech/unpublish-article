@@ -228,6 +228,12 @@ export class AuthController {
         }
       }
 
+      // Update last login and SSO attributes for civitas user
+      await query.run(
+        'UPDATE admin_users SET last_login_at = CURRENT_TIMESTAMP, sso_attributes = ? WHERE email = ?',
+        [JSON.stringify(authResult.attributes || {}), targetEmail]
+      );
+
       if (user.is_active !== 1) {
         const errorMsg = encodeURIComponent('Akun Anda telah dinonaktifkan oleh Administrator.');
         res.redirect(`${frontendBase}/?error=${errorMsg}`);

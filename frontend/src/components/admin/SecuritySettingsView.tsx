@@ -4,6 +4,7 @@ import {
   AccessControlMode,
   SecuritySettingsResponse,
 } from '../../services/api';
+import { formatDateTime } from '../../utils/date';
 
 interface SecuritySettingsViewProps {
   onShowToast?: (message: string, type?: 'success' | 'danger') => void;
@@ -622,7 +623,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ onSh
         <div style={{ fontSize: 12, color: 'var(--color-text-light)' }}>
           {lastUpdatedInfo.at && (
             <span>
-              Terakhir diperbarui: <strong>{new Date(lastUpdatedInfo.at).toLocaleString('id-ID')}</strong> oleh{' '}
+              Terakhir diperbarui: <strong>{formatDateTime(lastUpdatedInfo.at, { dateStyle: 'short', timeStyle: 'medium' })}</strong> oleh{' '}
               <strong>{lastUpdatedInfo.by}</strong>
             </span>
           )}

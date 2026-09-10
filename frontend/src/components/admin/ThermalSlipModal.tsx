@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { TokenAdminItem } from '../../services/api';
+import { formatDateTime } from '../../utils/date';
 
 export interface ThermalSlipItem {
   token: TokenAdminItem;
@@ -38,17 +39,7 @@ export const ThermalSlipModal: React.FC<ThermalSlipModalProps> = ({
   };
 
   const formatDate = (isoString?: string) => {
-    if (!isoString) {
-      const now = new Date();
-      return now.toLocaleDateString('id-ID', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    }
-    return new Date(isoString).toLocaleDateString('id-ID', {
+    return formatDateTime(isoString || new Date(), {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',

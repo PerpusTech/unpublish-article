@@ -1,8 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api, AuditLogItem } from '../../services/api';
 import { PaginationControls } from '../common/PaginationControls';
+import { ConfirmModal } from '../common/ConfirmModal';
+import { formatDateTime } from '../../utils/date';
 
-export const AuditLogTable: React.FC = () => {
+interface AuditLogTableProps {
+  currentAdminRole?: string;
+  onShowToast?: (message: string, type?: 'success' | 'danger') => void;
+}
+
+export const AuditLogTable: React.FC<AuditLogTableProps> = ({
+  currentAdminRole,
+  onShowToast,
+}) => {
   const [logs, setLogs] = useState<AuditLogItem[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [totalPages, setTotalPages] = useState<number>(1);
@@ -11,11 +21,15 @@ export const AuditLogTable: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [search, setSearch] = useState<string>('');
   const [actionFilter, setActionFilter] = useState<string>('ALL');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; patronName: string; action: string } | null>(null);
 
   const currentPageRef = React.useRef(currentPage);
   currentPageRef.current = currentPage;
   const pageSizeRef = React.useRef(pageSize);
   pageSizeRef.current = pageSize;
+
+  const isSuperAdmin = currentAdminRole === 'SUPER_ADMIN';
 
   const fetchLogs = useCallback(
     async (targetPage?: number, targetPageSize?: number, isSilent = false) => {
@@ -43,6 +57,22 @@ export const AuditLogTable: React.FC = () => {
     },
     [search, actionFilter]
   );
+
+  const confirmDeleteLog = async () => {
+    if (!deleteTarget) return;
+
+    setDeletingId(deleteTarget.id);
+    try {
+      await api.deleteAuditLog(deleteTarget.id);
+      if (onShowToast) onShowToast('Catatan log audit berhasil dihapus.', 'success');
+      setDeleteTarget(null);
+      fetchLogs(currentPageRef.current, pageSizeRef.current);
+    } catch (err: any) {
+      if (onShowToast) onShowToast(err.message || 'Gagal menghapus catatan log.', 'danger');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   // Debounced search & filter refresh (resets to page 1 on filter/search change)
   useEffect(() => {
@@ -94,15 +124,10 @@ export const AuditLogTable: React.FC = () => {
   };
 
   const formatDate = (isoStr: string) => {
-    try {
-      const d = new Date(isoStr);
-      return d.toLocaleString('id-ID', {
-        dateStyle: 'short',
-        timeStyle: 'medium',
-      });
-    } catch {
-      return isoStr;
-    }
+    return formatDateTime(isoStr, {
+      dateStyle: 'short',
+      timeStyle: 'medium',
+    });
   };
 
   const exportUrl = api.getAuditExportUrl({
@@ -243,19 +268,20 @@ export const AuditLogTable: React.FC = () => {
               <th>Jenis Aktivitas</th>
               <th>Artikel Yang Diakses</th>
               <th>IP Address</th>
+              {isSuperAdmin && <th style={{ textAlign: 'right', width: 90 }}>Aksi</th>}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: 30 }}>
+                <td colSpan={isSuperAdmin ? 7 : 6} style={{ textAlign: 'center', padding: 30 }}>
                   <div className="spinner-inline" style={{ marginBottom: 8 }} />
                   <div>Memuat data log audit...</div>
                 </td>
               </tr>
             ) : !Array.isArray(logs) || logs.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: 30, color: 'var(--color-text-muted)' }}>
+                <td colSpan={isSuperAdmin ? 7 : 6} style={{ textAlign: 'center', padding: 30, color: 'var(--color-text-muted)' }}>
                   Tidak ada catatan aktivitas yang cocok.
                 </td>
               </tr>
@@ -287,6 +313,20 @@ export const AuditLogTable: React.FC = () => {
                   <td style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>
                     {log.ip_address}
                   </td>
+                  {isSuperAdmin && (
+                    <td style={{ textAlign: 'right' }}>
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        onClick={() => setDeleteTarget({ id: log.id, patronName: log.patron_name, action: log.action })}
+                        disabled={deletingId === log.id}
+                        title="Hapus log audit ini secara permanen (Super Admin)"
+                        style={{ padding: '3px 8px', fontSize: 11 }}
+                      >
+                        {deletingId === log.id ? '...' : 'Hapus'}
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))
             )}
@@ -305,6 +345,26 @@ export const AuditLogTable: React.FC = () => {
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
         loading={loading}
+      />
+
+      {/* Modern Confirm Deletion Modal */}
+      <ConfirmModal
+        isOpen={Boolean(deleteTarget)}
+        title="Hapus Catatan Log Audit"
+        message={
+          <div>
+            Apakah Anda yakin ingin menghapus permanen catatan aktivitas{' '}
+            <strong>{deleteTarget?.action}</strong> oleh{' '}
+            <strong>{deleteTarget?.patronName}</strong>? Tindakan ini tidak dapat dibatalkan.
+          </div>
+        }
+        confirmText="Hapus Permanen"
+        confirmVariant="danger"
+        isLoading={Boolean(deletingId)}
+        onConfirm={confirmDeleteLog}
+        onClose={() => {
+          if (!deletingId) setDeleteTarget(null);
+        }}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api, PatronSession, NetworkStatusResponse } from './services/api';
-import { subscribeSessionSync } from './utils/sessionSync';
+import { subscribeSessionSync, broadcastLogout } from './utils/sessionSync';
 import { Header } from './components/Header';
 import { PatronView } from './pages/PatronView';
 import { AdminView } from './pages/AdminView';
@@ -132,7 +132,7 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Check patron session on load
+  // Check patron session on load and periodically
   const verifyPatronSession = async () => {
     try {
       const res = await api.getSessionStatus();
@@ -151,13 +151,17 @@ export const App: React.FC = () => {
         });
         localStorage.setItem('ums_patron_session', JSON.stringify(activeSession));
         localStorage.setItem('ums_patron_token_id', activeSession.id);
-      } else if (res.isActive === false && res.reason) {
-        if (session) {
-          setExpiredSession(session);
-          setIsExpiredModalOpen(true);
-        }
-        setSession(null);
+      } else if (!res.isActive) {
+        setSession((prev) => {
+          if (prev) {
+            setExpiredSession(prev);
+            setIsExpiredModalOpen(true);
+            broadcastLogout('REVOKED');
+          }
+          return null;
+        });
         localStorage.removeItem('ums_patron_session');
+        localStorage.removeItem('ums_intranet_session');
         localStorage.removeItem('ums_patron_token_id');
       }
     } catch {
@@ -175,12 +179,16 @@ export const App: React.FC = () => {
   };
 
   const handleSessionExpired = () => {
-    if (session) {
-      setExpiredSession(session);
-      setIsExpiredModalOpen(true);
-    }
-    setSession(null);
+    setSession((prev) => {
+      if (prev) {
+        setExpiredSession(prev);
+        setIsExpiredModalOpen(true);
+        broadcastLogout('EXPIRED');
+      }
+      return null;
+    });
     localStorage.removeItem('ums_patron_session');
+    localStorage.removeItem('ums_intranet_session');
     localStorage.removeItem('ums_patron_token_id');
   };
 
@@ -231,7 +239,9 @@ export const App: React.FC = () => {
     await api.logoutPatron();
     setSession(null);
     localStorage.removeItem('ums_patron_session');
+    localStorage.removeItem('ums_intranet_session');
     localStorage.removeItem('ums_patron_token_id');
+    broadcastLogout('USER_LOGOUT');
   };
 
   return (

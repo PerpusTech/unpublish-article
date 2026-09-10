@@ -520,4 +520,39 @@ export class TokenController {
       res.status(500).json({ error: { message: 'Gagal memuat daftar insiden.' } });
     }
   }
+
+  /**
+   * Permanently delete a token/session (Super Admin only)
+   */
+  public static async deleteToken(req: Request, res: Response): Promise<void> {
+    const currentAdminRole = (req.admin?.role || '').toUpperCase();
+    if (currentAdminRole !== 'SUPER_ADMIN') {
+      res.status(403).json({
+        error: {
+          code: 'FORBIDDEN_SUPER_ADMIN_ONLY',
+          message: 'Akses ditolak. Hanya Super Admin yang berwenang menghapus tiket/sesi secara permanen.'
+        }
+      });
+      return;
+    }
+
+    const id = getParam(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: { code: 'INVALID_ID', message: 'ID tiket wajib disertakan.' } });
+      return;
+    }
+
+    try {
+      const { query } = await import('../config/appDb');
+      await query.run('DELETE FROM tokens WHERE id = ?', [id]);
+      res.json({ success: true, message: 'Tiket/sesi membaca berhasil dihapus permanen.' });
+    } catch (err: any) {
+      res.status(500).json({
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: err.message || 'Gagal menghapus tiket.'
+        }
+      });
+    }
+  }
 }

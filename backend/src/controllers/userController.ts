@@ -119,6 +119,7 @@ export class UserController {
   public static async createUser(req: Request, res: Response): Promise<void> {
     try {
       const { email, name, role = 'ADMIN' } = req.body;
+      const currentAdminRole = (req.admin?.role || '').toUpperCase();
 
       if (!email || !name) {
         res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Nama dan email wajib diisi.' } });
@@ -127,15 +128,27 @@ export class UserController {
 
       const trimmedEmail = email.trim().toLowerCase();
       const trimmedName = name.trim();
-      const normalizedRole = role.toUpperCase() === 'USER' ? 'USER' : 'ADMIN';
+      const rawRole = role.toUpperCase();
+
+      if (rawRole === 'SUPER_ADMIN' && currentAdminRole !== 'SUPER_ADMIN') {
+        res.status(403).json({
+          error: {
+            code: 'FORBIDDEN_SUPER_ADMIN',
+            message: 'Akses ditolak. Administrator biasa tidak berwenang membuat akun dengan role Super Admin.',
+          },
+        });
+        return;
+      }
+
+      const normalizedRole = rawRole === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : rawRole === 'USER' ? 'USER' : 'ADMIN';
 
       // Enforce ums.ac.id domain
       if (ENV.ALLOWED_EMAIL_DOMAIN && !trimmedEmail.endsWith(`@${ENV.ALLOWED_EMAIL_DOMAIN}`)) {
         res.status(400).json({
           error: {
             code: 'DOMAIN_RESTRICTED',
-            message: `Hanya email resmi dengan domain @${ENV.ALLOWED_EMAIL_DOMAIN} yang dapat didaftarkan.`
-          }
+            message: `Hanya email resmi dengan domain @${ENV.ALLOWED_EMAIL_DOMAIN} yang dapat didaftarkan.`,
+          },
         });
         return;
       }
@@ -146,8 +159,8 @@ export class UserController {
         res.status(409).json({
           error: {
             code: 'USER_EXISTS',
-            message: `Pengguna dengan email ${trimmedEmail} sudah terdaftar.`
-          }
+            message: `Pengguna dengan email ${trimmedEmail} sudah terdaftar.`,
+          },
         });
         return;
       }
@@ -165,7 +178,7 @@ export class UserController {
       res.status(201).json({
         success: true,
         message: `Pengguna ${trimmedName} (${normalizedRole}) berhasil didaftarkan.`,
-        user: newUser
+        user: newUser,
       });
     } catch (err: any) {
       console.error('[UserController.createUser] Error:', err);
@@ -179,11 +192,36 @@ export class UserController {
   public static async updateUser(req: Request, res: Response): Promise<void> {
     try {
       const targetEmail = decodeURIComponent(String(req.params.email)).toLowerCase();
+      const currentAdminRole = (req.admin?.role || '').toUpperCase();
       const { role, is_active, name } = req.body;
 
       const user = await query.get('SELECT * FROM admin_users WHERE email = ?', [targetEmail]);
       if (!user) {
         res.status(404).json({ error: { code: 'USER_NOT_FOUND', message: 'Pengguna tidak ditemukan.' } });
+        return;
+      }
+
+      const targetUserRole = (user.role || '').toUpperCase();
+
+      // SECURITY ENFORCEMENT: Admin cannot modify Super Admin in any way!
+      if (targetUserRole === 'SUPER_ADMIN' && currentAdminRole !== 'SUPER_ADMIN') {
+        res.status(403).json({
+          error: {
+            code: 'FORBIDDEN_SUPER_ADMIN_EDIT',
+            message: 'Akses ditolak. Administrator biasa tidak berwenang mengubah role, status, atau data akun Super Admin.',
+          },
+        });
+        return;
+      }
+
+      // SECURITY ENFORCEMENT: Admin cannot promote anyone to Super Admin!
+      if (role && role.toUpperCase() === 'SUPER_ADMIN' && currentAdminRole !== 'SUPER_ADMIN') {
+        res.status(403).json({
+          error: {
+            code: 'FORBIDDEN_SUPER_ADMIN_PROMOTION',
+            message: 'Akses ditolak. Hanya Super Admin yang berwenang mengangkat pengguna menjadi Super Admin.',
+          },
+        });
         return;
       }
 
@@ -204,7 +242,8 @@ export class UserController {
       const params: any[] = [];
 
       if (role !== undefined) {
-        const normalizedRole = role.toUpperCase() === 'USER' ? 'USER' : 'ADMIN';
+        const rawRole = role.toUpperCase();
+        const normalizedRole = rawRole === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : rawRole === 'USER' ? 'USER' : 'ADMIN';
         updates.push('role = ?');
         params.push(normalizedRole);
       }
@@ -232,7 +271,7 @@ export class UserController {
       res.json({
         success: true,
         message: 'Data pengguna berhasil diperbarui.',
-        user: updated
+        user: updated,
       });
     } catch (err: any) {
       console.error('[UserController.updateUser] Error:', err);
@@ -247,14 +286,34 @@ export class UserController {
     try {
       const targetEmail = decodeURIComponent(String(req.params.email)).toLowerCase();
       const currentAdminEmail = req.admin?.email?.toLowerCase();
+      const currentAdminRole = (req.admin?.role || '').toUpperCase();
 
       if (currentAdminEmail === targetEmail) {
         res.status(400).json({ error: { code: 'SELF_DELETE', message: 'Anda tidak dapat menghapus akun Anda sendiri.' } });
         return;
       }
 
-      if (targetEmail === 'pustakawan@ums.ac.id') {
-        res.status(400).json({ error: { code: 'PROTECTED_USER', message: 'Akun Administrator Pustakawan utama tidak dapat dihapus.' } });
+      const user = await query.get('SELECT * FROM admin_users WHERE email = ?', [targetEmail]);
+      if (!user) {
+        res.status(404).json({ error: { code: 'USER_NOT_FOUND', message: 'Pengguna tidak ditemukan.' } });
+        return;
+      }
+
+      const targetUserRole = (user.role || '').toUpperCase();
+
+      // SECURITY ENFORCEMENT: Only Super Admin can delete users!
+      if (currentAdminRole !== 'SUPER_ADMIN') {
+        res.status(403).json({
+          error: {
+            code: 'FORBIDDEN_SUPER_ADMIN_ONLY',
+            message: 'Akses ditolak. Hanya Super Admin yang berwenang menghapus akun pengguna.',
+          },
+        });
+        return;
+      }
+
+      if (targetEmail === 'pustakawan@ums.ac.id' || targetEmail === 'mam708@ums.ac.id') {
+        res.status(400).json({ error: { code: 'PROTECTED_USER', message: 'Akun Super Admin utama institusi dilindungi dan tidak dapat dihapus.' } });
         return;
       }
 

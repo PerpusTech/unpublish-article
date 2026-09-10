@@ -53,9 +53,12 @@ api.get('/admin/tokens', requireAdminAuth, TokenController.listTokens);
 api.get('/admin/tokens/export', requireAdminAuth, TokenController.exportCsv);
 api.post('/admin/tokens/:id/extend', requireAdminAuth, TokenController.extendToken);
 api.post('/admin/tokens/:id/revoke', requireAdminAuth, TokenController.revokeToken);
+api.delete('/admin/tokens/:id', requireAdminAuth, TokenController.deleteToken);
 
 api.get('/admin/audit-logs', requireAdminAuth, AuditController.listLogs);
 api.get('/admin/audit-logs/export', requireAdminAuth, AuditController.exportCsv);
+api.delete('/admin/audit-logs/:id', requireAdminAuth, AuditController.deleteLog);
+api.delete('/admin/audit-logs', requireAdminAuth, AuditController.deleteBulkLogs);
 api.get('/admin/analytics', requireAdminAuth, AnalyticsController.getAnalytics);
 api.get('/admin/analytics/reading-heatmap-summary', requireAdminAuth, AnalyticsController.getReadingHeatmapSummary);
 api.get('/admin/analytics/reading-heatmap/:eprintId', requireAdminAuth, AnalyticsController.getReadingHeatmap);

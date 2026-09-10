@@ -314,8 +314,27 @@ export class SettingController {
         userAgent,
       });
 
-      // Persist to tokens table so it is managed in active sessions
+      // Persist / update civitas patron in admin_users table for login history & user management
       const { query } = await import('../config/appDb');
+      const patronEmail = authResult.email?.toLowerCase() || `${cleanNim.toLowerCase()}@ums.ac.id`;
+      try {
+        const existingCivitas = await query.get('SELECT * FROM admin_users WHERE email = ?', [patronEmail]);
+        if (!existingCivitas) {
+          await query.run(
+            'INSERT INTO admin_users (email, name, role, is_active, last_login_at, sso_attributes) VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP, ?)',
+            [patronEmail, cleanName, 'USER', JSON.stringify(authResult.attributes || {})]
+          );
+        } else {
+          await query.run(
+            'UPDATE admin_users SET name = ?, last_login_at = CURRENT_TIMESTAMP, sso_attributes = ? WHERE email = ?',
+            [cleanName, JSON.stringify(authResult.attributes || {}), patronEmail]
+          );
+        }
+      } catch (userDbErr) {
+        console.warn('[SettingController] Warning updating patron in admin_users:', userDbErr);
+      }
+
+      // Persist to tokens table so it is managed in active sessions
       try {
         await query.run('DELETE FROM tokens WHERE id = ? OR token_code = ?', [sessionId, tokenCode]);
         await query.run(

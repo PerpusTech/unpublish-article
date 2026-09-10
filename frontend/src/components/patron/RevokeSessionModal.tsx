@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { api, PatronSession } from '../../services/api';
+import { broadcastLogout } from '../../utils/sessionSync';
 
 interface RevokeSessionModalProps {
   isOpen: boolean;
@@ -39,6 +40,10 @@ export const RevokeSessionModal: React.FC<RevokeSessionModalProps> = ({
         patronNim: session.patron_nim,
         patronName: session.patron_name,
       });
+      localStorage.removeItem('ums_patron_session');
+      localStorage.removeItem('ums_intranet_session');
+      localStorage.removeItem('ums_patron_token_id');
+      broadcastLogout('USER_LOGOUT');
       onSuccess();
       onClose();
     } catch (err: any) {
