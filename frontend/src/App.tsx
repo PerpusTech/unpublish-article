@@ -376,6 +376,7 @@ export const App: React.FC = () => {
       <TokenEntryModal
         isOpen={isClaimModalOpen}
         initialTokenCode={initialClaimToken}
+        networkStatus={networkStatus}
         onClose={() => {
           setIsClaimModalOpen(false);
           setInitialClaimToken('');

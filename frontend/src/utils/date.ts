@@ -34,15 +34,29 @@ export function formatDateTime(
   const date = parseDate(input);
   if (!date) return fallback;
 
-  const defaultOptions: Intl.DateTimeFormatOptions = {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    ...options,
-  };
+  try {
+    // If dateStyle or timeStyle is explicitly provided, Intl does not allow day, month, hour, etc.
+    if (options && (options.dateStyle || options.timeStyle)) {
+      return date.toLocaleString('id-ID', options);
+    }
 
-  return date.toLocaleString('id-ID', defaultOptions);
+    const defaultOptions: Intl.DateTimeFormatOptions = {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      ...options,
+    };
+
+    return date.toLocaleString('id-ID', defaultOptions);
+  } catch {
+    try {
+      return date.toLocaleString('id-ID');
+    } catch {
+      return fallback;
+    }
+  }
 }
 
 export function formatDate(
@@ -53,14 +67,26 @@ export function formatDate(
   const date = parseDate(input);
   if (!date) return fallback;
 
-  const defaultOptions: Intl.DateTimeFormatOptions = {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    ...options,
-  };
+  try {
+    if (options && (options.dateStyle || options.timeStyle)) {
+      return date.toLocaleDateString('id-ID', options);
+    }
 
-  return date.toLocaleDateString('id-ID', defaultOptions);
+    const defaultOptions: Intl.DateTimeFormatOptions = {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      ...options,
+    };
+
+    return date.toLocaleDateString('id-ID', defaultOptions);
+  } catch {
+    try {
+      return date.toLocaleDateString('id-ID');
+    } catch {
+      return fallback;
+    }
+  }
 }
 
 export function formatTime(
@@ -71,11 +97,24 @@ export function formatTime(
   const date = parseDate(input);
   if (!date) return fallback;
 
-  const defaultOptions: Intl.DateTimeFormatOptions = {
-    hour: '2-digit',
-    minute: '2-digit',
-    ...options,
-  };
+  try {
+    if (options && (options.dateStyle || options.timeStyle)) {
+      return date.toLocaleTimeString('id-ID', options);
+    }
 
-  return date.toLocaleTimeString('id-ID', defaultOptions);
+    const defaultOptions: Intl.DateTimeFormatOptions = {
+      hour: '2-digit',
+      minute: '2-digit',
+      ...options,
+    };
+
+    return date.toLocaleTimeString('id-ID', defaultOptions);
+  } catch {
+    try {
+      return date.toLocaleTimeString('id-ID');
+    } catch {
+      return fallback;
+    }
+  }
 }
+

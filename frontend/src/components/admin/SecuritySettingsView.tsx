@@ -623,7 +623,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ onSh
         <div style={{ fontSize: 12, color: 'var(--color-text-light)' }}>
           {lastUpdatedInfo.at && (
             <span>
-              Terakhir diperbarui: <strong>{formatDateTime(lastUpdatedInfo.at, { dateStyle: 'short', timeStyle: 'medium' })}</strong> oleh{' '}
+              Terakhir diperbarui: <strong>{formatDateTime(lastUpdatedInfo.at, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</strong> oleh{' '}
               <strong>{lastUpdatedInfo.by}</strong>
             </span>
           )}

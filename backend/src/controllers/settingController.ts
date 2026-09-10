@@ -234,10 +234,25 @@ export class SettingController {
   /**
    * Initiate CAS SSO Login for Patrons (Students/Lecturers)
    */
-  public static patronCasLogin(req: Request, res: Response): void {
-    const loginUrl = CasService.getPatronLoginUrl();
-    const switchAccountUrl = CasService.getPatronLogoutUrl(loginUrl);
-    res.json({ url: loginUrl, switchAccountUrl });
+  public static async patronCasLogin(req: Request, res: Response): Promise<void> {
+    try {
+      const settings = await SecuritySettingService.getSettings();
+      if (settings.accessMode === 'TOKEN_ONLY') {
+        res.status(403).json({
+          error: {
+            code: 'TOKEN_ONLY_POLICY',
+            message: 'Kebijakan akses repositori saat ini diatur khusus tiket token meja layanan. Login SSO dinonaktifkan.',
+          },
+        });
+        return;
+      }
+      const loginUrl = CasService.getPatronLoginUrl();
+      const switchAccountUrl = CasService.getPatronLogoutUrl(loginUrl);
+      res.json({ url: loginUrl, switchAccountUrl });
+    } catch (err: any) {
+      console.error('[SettingController] Error patronCasLogin:', err);
+      res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Gagal memproses URL login SSO.' } });
+    }
   }
 
   /**
@@ -253,6 +268,13 @@ export class SettingController {
     }
 
     try {
+      const settings = await SecuritySettingService.getSettings();
+      if (settings.accessMode === 'TOKEN_ONLY') {
+        const errorMsg = encodeURIComponent('Kebijakan akses repositori saat ini disetel khusus tiket token meja layanan. Login SSO dinonaktifkan.');
+        res.redirect(`${frontendBase}/?patron_sso_error=${errorMsg}`);
+        return;
+      }
+
       const patronServiceUrl = ENV.CAS_SERVICE_URL;
       const authResult = await CasService.validateTicket(ticket, patronServiceUrl);
 
