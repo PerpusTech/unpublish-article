@@ -1,3 +1,5 @@
+import { broadcastLogout, broadcastLogin } from '../utils/sessionSync';
+
 const API_BASE = '/api/v1';
 
 // Client UUID stored in localStorage for fingerprinting
@@ -92,6 +94,20 @@ export interface BrowseResult {
   items: BrowseItem[];
 }
 
+export interface SearchSuggestions {
+  nearestKeywords: string[];
+  relatedDivisions: BrowseItem[];
+  relatedSubjects: BrowseItem[];
+  popularKeywords: string[];
+}
+
+export interface ArticleSearchResult {
+  items: ArticleItem[];
+  total: number;
+  totalPages: number;
+  suggestions?: SearchSuggestions;
+}
+
 export function getAdminHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const headers: Record<string, string> = { ...extra };
   const token = localStorage.getItem('ums_admin_token');
@@ -125,6 +141,7 @@ export const api = {
       if (data.session) {
         localStorage.setItem('ums_patron_session', JSON.stringify(data.session));
         localStorage.setItem('ums_patron_token_id', data.session.id);
+        broadcastLogin(data.session);
       }
       return { success: true, session: data.session };
     } catch (err: any) {
@@ -158,11 +175,20 @@ export const api = {
         localStorage.setItem('ums_patron_session', JSON.stringify(data.session));
         localStorage.setItem('ums_intranet_session', JSON.stringify(data.session));
         localStorage.setItem('ums_patron_token_id', data.session.id);
+        broadcastLogin(data.session);
       }
       return { success: true, session: data.session };
     } catch (err: any) {
       return { success: false, error: 'Terjadi kesalahan jaringan saat check-in.' };
     }
+  },
+
+  async getPatronSsoLoginUrl(): Promise<{ url: string; switchAccountUrl?: string }> {
+    const res = await fetch(`${API_BASE}/patron/sso/login`);
+    if (!res.ok) {
+      throw new Error('Gagal mendapatkan tautan SSO UMS');
+    }
+    return res.json();
   },
 
   async getSessionStatus(): Promise<{ isActive: boolean; session?: PatronSession; reason?: string }> {
@@ -227,6 +253,7 @@ export const api = {
       localStorage.removeItem('ums_patron_session');
       localStorage.removeItem('ums_intranet_session');
       localStorage.removeItem('ums_patron_token_id');
+      broadcastLogout('USER_LOGOUT');
     }
   },
 
@@ -242,7 +269,7 @@ export const api = {
     id_number?: string;
     page?: number;
     limit?: number;
-  }): Promise<{ items: ArticleItem[]; total: number; totalPages: number }> {
+  }): Promise<ArticleSearchResult> {
     const qs = new URLSearchParams();
     if (params.q) qs.append('q', params.q);
     if (params.status) qs.append('status', params.status);

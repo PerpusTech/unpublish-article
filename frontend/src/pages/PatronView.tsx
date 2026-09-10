@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { api, ArticleItem, PatronSession, NetworkStatusResponse } from '../services/api';
+import { api, ArticleItem, PatronSession, NetworkStatusResponse, SearchSuggestions } from '../services/api';
+import { subscribeSessionSync } from '../utils/sessionSync';
 import { ArticleCard } from '../components/patron/ArticleCard';
 import { ArticleCardSkeleton } from '../components/patron/ArticleCardSkeleton';
 import { ArticleDetailModal } from '../components/patron/ArticleDetailModal';
@@ -56,6 +57,12 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
   const [isRevokeModalOpen, setIsRevokeModalOpen] = useState<boolean>(false);
   const [pendingPdf, setPendingPdf] = useState<{ articleId: number; docId: number; title: string } | null>(null);
 
+  useEffect(() => {
+    if (session) {
+      setIntranetSession(session);
+    }
+  }, [session]);
+
   const effectiveSession: PatronSession | null = session || intranetSession || (networkStatus?.canReadDirectly ? {
     id: 'INTRANET_UMS',
     token_code: 'UMS-INTRANET',
@@ -73,6 +80,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
   });
   const [selectedArticle, setSelectedArticle] = useState<ArticleItem | null>(null);
   const [isCopied, setIsCopied] = useState<boolean>(false);
+  const [crossTabLockNotice, setCrossTabLockNotice] = useState<string | null>(null);
 
   // Recent Reads State
   const [recentReads, setRecentReads] = useState<RecentReadItem[]>(() => {
@@ -129,6 +137,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
   const [totalPages, setTotalPages] = useState<number>(1);
+  const [searchSuggestions, setSearchSuggestions] = useState<SearchSuggestions | null>(null);
 
   const currentPageRef = React.useRef(currentPage);
   currentPageRef.current = currentPage;
@@ -167,6 +176,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
       setArticles(res.items);
       setTotal(res.total);
       setTotalPages(res.totalPages || Math.ceil(res.total / sizeToLoad) || 1);
+      setSearchSuggestions(res.suggestions || null);
       setCurrentPage(pageToLoad);
       currentPageRef.current = pageToLoad;
     } catch (err: any) {
@@ -175,6 +185,30 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
       setLoading(false);
     }
   };
+
+  // Cross-Tab Session Synchronization & Auto-Lock Listener
+  useEffect(() => {
+    const unsubscribe = subscribeSessionSync({
+      onLogout: () => {
+        // Immediately lock PDF reader, dismiss detail modal, and clear session
+        setIntranetSession(null);
+        setActivePdf(null);
+        setSelectedArticle(null);
+        setIsIntranetCheckinOpen(false);
+        setIsRevokeModalOpen(false);
+        setCrossTabLockNotice('Sesi pemustaka telah diakhiri di tab lain. Tampilan naskah dan kanvas PDF terkunci demi keamanan.');
+        loadArticles(1, pageSizeRef.current, { status: 'ALL' });
+      },
+      onLogin: (newSession) => {
+        setIntranetSession(newSession);
+        setCrossTabLockNotice(null);
+      },
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (!hasAccess) {
@@ -249,6 +283,31 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
   const handleClearAllFilters = () => {
     setFacets({ status: 'ALL' });
     setSearchQuery('');
+  };
+
+  const handleApplyKeywordSuggestion = (keyword: string) => {
+    setSearchQuery(keyword);
+    loadArticles(1, pageSize, facets, keyword);
+  };
+
+  const handleApplyDivisionSuggestion = (divVal: string, divLabel?: string) => {
+    const nextFacets: FacetedFilters = {
+      ...facets,
+      division: divVal,
+      divisionLabel: divLabel || divVal,
+    };
+    setFacets(nextFacets);
+    loadArticles(1, pageSize, nextFacets, searchQuery);
+  };
+
+  const handleApplySubjectSuggestion = (subVal: string, subLabel?: string) => {
+    const nextFacets: FacetedFilters = {
+      ...facets,
+      subject: subVal,
+      subjectLabel: subLabel || subVal,
+    };
+    setFacets(nextFacets);
+    loadArticles(1, pageSize, nextFacets, searchQuery);
   };
 
   const handlePageChange = (newPage: number) => {
@@ -551,6 +610,60 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
       ) : (
         /* UI/UX Pro Max: Authenticated Research Desk */
         <div>
+          {/* Cross-Tab Auto-Lock Security Notice */}
+          {crossTabLockNotice && (
+            <div
+              style={{
+                marginBottom: 16,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 18px',
+                borderRadius: 'var(--radius-lg, 10px)',
+                backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                border: '1.5px solid rgba(239, 68, 68, 0.35)',
+                color: 'var(--color-text)',
+                boxShadow: '0 2px 8px rgba(239, 68, 68, 0.08)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: '50%',
+                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                    color: '#dc2626',
+                    display: 'grid',
+                    placeItems: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                </div>
+                <div>
+                  <strong style={{ display: 'block', fontSize: 13.5, color: '#dc2626', fontWeight: 700 }}>
+                    Tampilan Naskah Terkunci Otomatis (Cross-Tab Protection)
+                  </strong>
+                  <span style={{ fontSize: 12.5, color: 'var(--color-text-muted)' }}>
+                    {crossTabLockNotice}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setCrossTabLockNotice(null)}
+                style={{ padding: '4px 10px', fontSize: 12, borderRadius: 'var(--radius-sm)' }}
+              >
+                Tutup Peringatan
+              </button>
+            </div>
+          )}
+
           {/* Active Session Identity Banner */}
           {session ? (
             <div className="patron-session-bar">
@@ -1305,55 +1418,260 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
               <ArticleCardSkeleton />
             </div>
           ) : articles.length === 0 ? (
-            /* UI/UX Pro Max: Empty State with Search Guidance */
+            /* Smart Search Suggestion: Editorial Empty State */
             <div
               style={{
                 backgroundColor: 'var(--color-surface)',
                 border: '1px solid var(--color-border)',
                 borderRadius: 'var(--radius-lg)',
-                padding: '56px 24px',
-                textAlign: 'center',
-                color: 'var(--color-text-muted)',
+                padding: '36px 28px',
+                textAlign: 'left',
+                color: 'var(--color-text)',
               }}
             >
-              <div
-                style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: '50%',
-                  background: 'var(--color-surface-subtle)',
-                  display: 'grid',
-                  placeItems: 'center',
-                  margin: '0 auto 16px',
-                  color: 'var(--color-text-muted)',
-                  border: '1px solid var(--color-border)',
-                }}
-              >
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                  <line x1="8" y1="11" x2="14" y2="11" />
-                </svg>
+              {/* Header Row */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 20 }}>
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 10,
+                    background: 'var(--color-surface-subtle)',
+                    border: '1px solid var(--color-border)',
+                    display: 'grid',
+                    placeItems: 'center',
+                    color: 'var(--color-text-muted)',
+                    flexShrink: 0,
+                  }}
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    <line x1="8" y1="11" x2="14" y2="11" />
+                  </svg>
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)', marginBottom: 4 }}>
+                    Tidak Ditemukan Naskah yang Cocok
+                  </div>
+                  <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: 0, lineHeight: 1.5 }}>
+                    {searchQuery ? (
+                      <>
+                        Pencarian untuk kata kunci <strong style={{ color: 'var(--color-text)' }}>&quot;{searchQuery}&quot;</strong> tidak menghasilkan naskah. Periksa ejaan atau gunakan saran pencarian cerdas di bawah.
+                      </>
+                    ) : (
+                      'Kombinasi filter yang Anda terapkan tidak menghasilkan naskah. Coba sesuaikan filter atau jelajahi kategori terkait.'
+                    )}
+                  </p>
+                </div>
               </div>
 
-              <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--color-text)', marginBottom: 8 }}>
-                Tidak ada naskah yang cocok
-              </div>
+              {/* 1. Nearest Keywords (Did You Mean?) */}
+              {searchSuggestions?.nearestKeywords && searchSuggestions.nearestKeywords.length > 0 && (
+                <div style={{ marginBottom: 20, padding: '14px 16px', backgroundColor: 'var(--color-surface-subtle)', borderRadius: 8, border: '1px solid var(--color-border)' }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="16" x2="12" y2="12" />
+                      <line x1="12" y1="8" x2="12.01" y2="8" />
+                    </svg>
+                    <span>Mungkin Maksud Anda (Rekomendasi Terdekat):</span>
+                  </div>
 
-              <p style={{ fontSize: 13.5, maxWidth: 440, margin: '0 auto 18px', lineHeight: 1.6 }}>
-                Tidak ditemukan naskah dengan kata kunci &quot;{searchQuery}&quot;. Coba periksa ejaan, gunakan kata kunci yang lebih umum, atau ubah filter koleksi di atas.
-              </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {searchSuggestions.nearestKeywords.map((kw, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => handleApplyKeywordSuggestion(kw)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '6px 12px',
+                          backgroundColor: 'var(--color-surface)',
+                          border: '1px solid var(--color-primary)',
+                          borderRadius: 6,
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          color: 'var(--color-primary)',
+                          cursor: 'pointer',
+                          transition: 'all 0.12s ease',
+                        }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="11" cy="11" r="8" />
+                          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        </svg>
+                        <span>{kw}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-              {searchQuery && (
+              {/* 2. Related Divisions / Faculties Shortcut */}
+              {searchSuggestions?.relatedDivisions && searchSuggestions.relatedDivisions.length > 0 && (
+                <div style={{ marginBottom: 18 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                    </svg>
+                    <span>Cari Berdasarkan Fakultas / Program Studi Terkait:</span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {searchSuggestions.relatedDivisions.map((div, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => handleApplyDivisionSuggestion(div.value, div.label)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '5px 11px',
+                          backgroundColor: 'var(--color-surface-subtle)',
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          color: 'var(--color-text)',
+                          cursor: 'pointer',
+                          transition: 'all 0.12s ease',
+                        }}
+                      >
+                        <span>{div.label}</span>
+                        <span style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface)', padding: '1px 5px', borderRadius: 4 }}>
+                          {div.count}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 3. Related Subjects Shortcut */}
+              {searchSuggestions?.relatedSubjects && searchSuggestions.relatedSubjects.length > 0 && (
+                <div style={{ marginBottom: 18 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                      <line x1="7" y1="7" x2="7.01" y2="7" />
+                    </svg>
+                    <span>Cari Berdasarkan Subjek Terkait:</span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {searchSuggestions.relatedSubjects.map((sub, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => handleApplySubjectSuggestion(sub.value, sub.label)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '5px 11px',
+                          backgroundColor: 'var(--color-surface-subtle)',
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          color: 'var(--color-text)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span>{sub.label}</span>
+                        <span style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface)', padding: '1px 5px', borderRadius: 4 }}>
+                          {sub.count}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 4. Popular Academic Research Topics */}
+              {searchSuggestions?.popularKeywords && searchSuggestions.popularKeywords.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                    </svg>
+                    <span>Topik Kajian Populer di UMS:</span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {searchSuggestions.popularKeywords.map((topic, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => handleApplyKeywordSuggestion(topic)}
+                        style={{
+                          padding: '4px 10px',
+                          backgroundColor: 'var(--color-surface-subtle)',
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 9999,
+                          fontSize: 11.5,
+                          fontWeight: 500,
+                          color: 'var(--color-text)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {topic}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 5. Navigation & Reset Shortcuts */}
+              <div style={{ paddingTop: 16, borderTop: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      setBrowseCategoryTab('division');
+                      setIsBrowseModalOpen(true);
+                    }}
+                    style={{ fontSize: 12 }}
+                  >
+                    Jelajahi Semua Fakultas
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      setBrowseCategoryTab('subject');
+                      setIsBrowseModalOpen(true);
+                    }}
+                    style={{ fontSize: 12 }}
+                  >
+                    Jelajahi Semua Subjek
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      setBrowseCategoryTab('year');
+                      setIsBrowseModalOpen(true);
+                    }}
+                    style={{ fontSize: 12 }}
+                  >
+                    Jelajahi Berdasarkan Tahun
+                  </button>
+                </div>
+
                 <button
                   type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={handleClearSearch}
-                  style={{ fontWeight: 600 }}
+                  className="btn btn-primary btn-sm"
+                  onClick={handleClearAllFilters}
+                  style={{ fontSize: 12, fontWeight: 600 }}
                 >
-                  Tampilkan Semua Koleksi
+                  Reset Semua Filter & Tampilkan Semua Naskah
                 </button>
-              )}
+              </div>
             </div>
           ) : (
             <div>
@@ -1376,6 +1694,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
                   <ArticleCard
                     key={item.eprintid}
                     article={item}
+                    searchQuery={searchQuery}
                     onSelect={handleSelectArticle}
                     onOpenPdf={handleOpenPdf}
                   />
@@ -1404,6 +1723,7 @@ export const PatronView: React.FC<PatronViewProps> = ({ session, networkStatus, 
       {selectedArticle && !activePdf && (
         <ArticleDetailModal
           article={selectedArticle}
+          searchQuery={searchQuery}
           onClose={() => setSelectedArticle(null)}
           onOpenPdf={(articleId: number, docId: number, title: string) => {
             handleOpenPdf(articleId, docId, title);

@@ -41,6 +41,26 @@ export class CasService {
   }
 
   /**
+   * Build UMS CAS Patron SSO Login URL
+   */
+  public static getPatronLoginUrl(customServiceUrl?: string): string {
+    const serviceUrl = customServiceUrl || ENV.CAS_SERVICE_URL;
+    const portStr = (ENV.CAS_PORT === 443 || ENV.CAS_PORT === 80) ? '' : `:${ENV.CAS_PORT}`;
+    const protocol = ENV.CAS_PORT === 80 ? 'http' : 'https';
+    return `${protocol}://${ENV.CAS_HOST}${portStr}${ENV.CAS_CONTEXT}/login?service=${encodeURIComponent(serviceUrl)}`;
+  }
+
+  /**
+   * Build UMS CAS Patron SSO Logout URL
+   */
+  public static getPatronLogoutUrl(customServiceUrl?: string): string {
+    const serviceUrl = customServiceUrl || `${ENV.FRONTEND_URL}/`;
+    const portStr = (ENV.CAS_PORT === 443 || ENV.CAS_PORT === 80) ? '' : `:${ENV.CAS_PORT}`;
+    const protocol = ENV.CAS_PORT === 80 ? 'http' : 'https';
+    return `${protocol}://${ENV.CAS_HOST}${portStr}${ENV.CAS_CONTEXT}/logout?service=${encodeURIComponent(serviceUrl)}`;
+  }
+
+  /**
    * Resolve user's official full name from campus EPrints MySQL database
    */
   public static async resolveCampusName(usernameOrEmail: string): Promise<string | null> {

@@ -24,6 +24,7 @@ export const ENV = {
   CAS_VERSION: process.env.CAS_VERSION || '2.0',
   CAS_DISABLE_SSL_VALIDATION: process.env.CAS_DISABLE_SSL_VALIDATION === 'true',
   CAS_SERVICE_URL: process.env.CAS_SERVICE_URL || 'http://localhost:5000/api/v1/auth/cas/callback',
+  CAS_PATRON_SERVICE_URL: process.env.CAS_PATRON_SERVICE_URL || 'http://localhost:5000/api/v1/patron/sso/callback',
 
   // EPrints Database (Read-Only)
   // Check both EPRINTS_USE_MOCK and whether DB_HOST is set

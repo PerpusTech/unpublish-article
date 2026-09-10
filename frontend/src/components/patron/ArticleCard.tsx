@@ -1,13 +1,15 @@
 import React from 'react';
 import { ArticleItem } from '../../services/api';
+import { HighlightText } from '../common/HighlightText';
 
 interface ArticleCardProps {
   article: ArticleItem;
+  searchQuery?: string;
   onSelect: (article: ArticleItem) => void;
   onOpenPdf?: (articleId: number, docId: number, title: string) => void;
 }
 
-export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect }) => {
+export const ArticleCard: React.FC<ArticleCardProps> = ({ article, searchQuery, onSelect }) => {
   const isPublish = article.eprint_status === 'archive';
   const tierClass = isPublish ? 'publish-tier' : 'unpublish-tier';
 
@@ -89,7 +91,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect }) =
             onSelect(article);
           }}
         >
-          {article.title}
+          <HighlightText text={article.title} query={searchQuery} />
         </a>
       </h3>
 
@@ -100,8 +102,14 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect }) =
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
             <circle cx="12" cy="7" r="4" />
           </svg>
-          <span className="author-name">{mainAuthor}</span>
-          {authorNim && <span className="author-nim">({authorNim})</span>}
+          <span className="author-name">
+            <HighlightText text={mainAuthor} query={searchQuery} />
+          </span>
+          {authorNim && (
+            <span className="author-nim">
+              (<HighlightText text={authorNim} query={searchQuery} />)
+            </span>
+          )}
           {otherAuthorsCount > 0 && (
             <span className="other-authors-tag">+{otherAuthorsCount} penulis</span>
           )}
@@ -117,14 +125,19 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onSelect }) =
               <path d="M16 6h.01" />
               <path d="M12 6h.01" />
             </svg>
-            <span className="department-name">{article.department}</span>
+            <span className="department-name">
+              <HighlightText text={article.department} query={searchQuery} />
+            </span>
           </div>
         )}
       </div>
 
       {/* Abstract Excerpt */}
       <p className="academic-card-abstract">
-        {article.abstract || 'Tidak ada abstrak ringkas yang disertakan pada metadata naskah eprint ini.'}
+        <HighlightText
+          text={article.abstract || 'Tidak ada abstrak ringkas yang disertakan pada metadata naskah eprint ini.'}
+          query={searchQuery}
+        />
       </p>
 
       {/* Card Action Footer */}

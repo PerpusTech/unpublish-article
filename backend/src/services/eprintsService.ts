@@ -44,17 +44,27 @@ export interface BrowseCategoryResult {
   items: BrowseItem[];
 }
 
+export interface SearchSuggestions {
+  nearestKeywords: string[];
+  relatedDivisions: BrowseItem[];
+  relatedSubjects: BrowseItem[];
+  popularKeywords: string[];
+}
+
+export interface ArticleSearchResult {
+  items: EPrintItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  suggestions?: SearchSuggestions;
+}
+
 export class EPrintsService {
   /**
    * Search repository catalog (both publish and unpublish)
    */
-  public static async searchArticles(query: SearchQuery): Promise<{
-    items: EPrintItem[];
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  }> {
+  public static async searchArticles(query: SearchQuery): Promise<ArticleSearchResult> {
     const page = Math.max(1, query.page || 1);
     const limit = Math.max(1, Math.min(50, query.limit || 10));
 
@@ -145,6 +155,7 @@ export class EPrintsService {
       const total = filtered.length;
       const startIndex = (page - 1) * limit;
       const paginated = filtered.slice(startIndex, startIndex + limit);
+      const suggestions = total === 0 ? await this.getSearchSuggestions(query) : undefined;
 
       return {
         items: paginated,
@@ -152,6 +163,7 @@ export class EPrintsService {
         page,
         limit,
         totalPages: Math.ceil(total / limit) || 1,
+        suggestions,
       };
     }
 
@@ -317,12 +329,15 @@ export class EPrintsService {
       }));
 
 
+      const suggestions = total === 0 ? await this.getSearchSuggestions(query) : undefined;
+
       return {
         items,
         total,
         page,
         limit,
         totalPages: Math.ceil(total / limit) || 1,
+        suggestions,
       };
     } catch (err) {
       console.error('[EPrintsService] Error querying live MySQL, falling back to mock dataset:', err);
@@ -339,6 +354,7 @@ export class EPrintsService {
         page: 1,
         limit,
         totalPages: 1,
+        suggestions: filtered.length === 0 ? await this.getSearchSuggestions(query) : undefined,
       };
     }
   }
@@ -714,6 +730,161 @@ export class EPrintsService {
         error: err.message || String(err),
       };
     }
+  }
+
+  /**
+   * Calculate Smart Search Suggestions for empty search states:
+   * 1. Nearest keywords based on Levenshtein distance and token similarity
+   * 2. Related Divisions / Faculties
+   * 3. Related Subjects
+   * 4. Popular Academic Research Topics
+   */
+  private static POPULAR_KEYWORDS = [
+    'Kecerdasan Buatan',
+    'Machine Learning',
+    'Perpustakaan Digital',
+    'Sistem Informasi',
+    'Teknik Informatika',
+    'Hukum Pidana',
+    'Manajemen Bisnis',
+    'Pendidikan Karakter',
+    'Farmasi Klinis',
+    'Teknik Sipil',
+    'Psikologi Pendidikan',
+    'Kesehatan Masyarakat',
+  ];
+
+  public static async getSearchSuggestions(query: SearchQuery): Promise<SearchSuggestions> {
+    const qRaw = (query.q || '').trim();
+    const qLower = qRaw.toLowerCase();
+
+    const nearestKeywords: string[] = [];
+    if (qLower.length >= 2) {
+      const candidateTerms = new Set<string>();
+      this.POPULAR_KEYWORDS.forEach((kw) => {
+        candidateTerms.add(kw);
+        kw.split(/\s+/).forEach((w) => {
+          if (w.length >= 3) candidateTerms.add(w);
+        });
+      });
+
+      if (mysqlPool) {
+        try {
+          const [sampleRows]: any = await mysqlPool.query(
+            `SELECT title, department FROM eprint WHERE title IS NOT NULL ORDER BY eprintid DESC LIMIT 250`
+          );
+          (sampleRows || []).forEach((r: any) => {
+            if (r.title) {
+              r.title.split(/[\s,.:;()\-–"—]+/).forEach((w: string) => {
+                if (w.length >= 4) candidateTerms.add(w);
+              });
+            }
+            if (r.department) candidateTerms.add(r.department);
+          });
+        } catch {
+          // ignore error
+        }
+      }
+
+      MOCK_EPRINTS.forEach((item) => {
+        candidateTerms.add(item.title);
+        item.title.split(/[\s,.:;()\-–"—]+/).forEach((w) => {
+          if (w.length >= 4) candidateTerms.add(w);
+        });
+        if (item.department) candidateTerms.add(item.department);
+        item.creators.forEach((c) => candidateTerms.add(c));
+      });
+
+      const levenshtein = (a: string, b: string): number => {
+        const an = a.length;
+        const bn = b.length;
+        if (an === 0) return bn;
+        if (bn === 0) return an;
+        const matrix = Array.from({ length: bn + 1 }, (_, i) => [i]);
+        for (let j = 0; j <= an; j++) matrix[0][j] = j;
+        for (let i = 1; i <= bn; i++) {
+          for (let j = 1; j <= an; j++) {
+            if (b.charAt(i - 1) === a.charAt(j - 1)) {
+              matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+              matrix[i][j] = Math.min(
+                matrix[i - 1][j - 1] + 1,
+                matrix[i][j - 1] + 1,
+                matrix[i - 1][j] + 1
+              );
+            }
+          }
+        }
+        return matrix[bn][an];
+      };
+
+      const scoredTerms: { term: string; score: number }[] = [];
+      for (const term of candidateTerms) {
+        const termLower = term.toLowerCase();
+        if (termLower === qLower) continue;
+
+        let score = 0;
+        if (termLower.includes(qLower) || qLower.includes(termLower)) {
+          score = 0.85;
+        } else {
+          const dist = levenshtein(qLower, termLower);
+          const maxLen = Math.max(qLower.length, termLower.length);
+          const sim = 1 - dist / maxLen;
+          if (sim >= 0.55 && dist <= 3) {
+            score = sim;
+          }
+        }
+
+        if (score > 0.5) {
+          scoredTerms.push({ term, score });
+        }
+      }
+
+      scoredTerms.sort((a, b) => b.score - a.score);
+      const uniqueSelected = new Set<string>();
+      for (const item of scoredTerms) {
+        const clean = item.term.trim();
+        const lower = clean.toLowerCase();
+        if (!uniqueSelected.has(lower) && lower !== qLower) {
+          uniqueSelected.add(lower);
+          nearestKeywords.push(clean);
+          if (nearestKeywords.length >= 4) break;
+        }
+      }
+    }
+
+    // 2. Related Divisions
+    const divisionResult = await this.browseCategory('division');
+    let relatedDivisions = divisionResult.items;
+    if (qLower) {
+      const filtered = divisionResult.items.filter((d) =>
+        d.label.toLowerCase().includes(qLower) || qLower.includes(d.label.toLowerCase())
+      );
+      if (filtered.length > 0) {
+        relatedDivisions = filtered;
+      }
+    }
+    relatedDivisions = relatedDivisions.slice(0, 4);
+
+    // 3. Related Subjects
+    const subjectResult = await this.browseCategory('subject');
+    let relatedSubjects = subjectResult.items;
+    if (qLower) {
+      const filtered = subjectResult.items.filter((s) =>
+        s.label.toLowerCase().includes(qLower) || qLower.includes(s.label.toLowerCase())
+      );
+      if (filtered.length > 0) {
+        relatedSubjects = filtered;
+      }
+    }
+    relatedSubjects = relatedSubjects.slice(0, 4);
+
+    return {
+      nearestKeywords,
+      relatedDivisions,
+      relatedSubjects,
+      popularKeywords: this.POPULAR_KEYWORDS.slice(0, 6),
+    };
   }
 }
 

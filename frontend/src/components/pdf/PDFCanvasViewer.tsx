@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist';
 import { api, PatronSession, ArticleItem, sendReadingHeartbeat } from '../../services/api';
+import { subscribeSessionSync } from '../../utils/sessionSync';
 
 // Set up PDF.js worker via reliable CDN matching the installed version
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '3.11.174'}/pdf.worker.min.js`;
@@ -168,6 +169,31 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       flushReadingHeartbeat();
     };
   }, [isWindowFocused, primaryLoading, primaryError, flushReadingHeartbeat]);
+
+  // Cross-Tab Session Synchronization & Instant Auto-Lock Listener
+  useEffect(() => {
+    const unsubscribe = subscribeSessionSync({
+      onLogout: () => {
+        flushReadingHeartbeat();
+        // Clear canvas buffers immediately
+        try {
+          if (primaryCanvasRef.current) {
+            const ctx = primaryCanvasRef.current.getContext('2d');
+            ctx?.clearRect(0, 0, primaryCanvasRef.current.width, primaryCanvasRef.current.height);
+          }
+          if (secondaryCanvasRef.current) {
+            const ctx = secondaryCanvasRef.current.getContext('2d');
+            ctx?.clearRect(0, 0, secondaryCanvasRef.current.width, secondaryCanvasRef.current.height);
+          }
+        } catch {}
+        onClose();
+      },
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [flushReadingHeartbeat, onClose]);
 
   const effectiveTokenId = currentSession?.id || localStorage.getItem('ums_patron_token_id') || undefined;
   const primaryStreamUrl = api.getDocumentStreamUrl(primaryDoc.articleId, primaryDoc.docId, effectiveTokenId);

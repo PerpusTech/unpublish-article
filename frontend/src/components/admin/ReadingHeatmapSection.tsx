@@ -18,28 +18,53 @@ const formatDuration = (seconds: number): string => {
   const secs = seconds % 60;
 
   if (hours > 0) {
-    return `${hours} jam ${minutes} mnt`;
+    return `${hours}j ${minutes}m`;
   }
   if (minutes > 0) {
-    return `${minutes} mnt ${secs > 0 ? `${secs} dtk` : ''}`;
+    return `${minutes}m ${secs > 0 ? `${secs}s` : ''}`;
   }
-  return `${secs} dtk`;
+  return `${secs}s`;
 };
 
-const getHeatmapColor = (intensity: number): { bg: string; text: string; border: string } => {
+const getIntensityStyle = (intensity: number) => {
   if (intensity === 0) {
-    return { bg: 'var(--color-surface-subtle)', text: 'var(--color-text-muted)', border: 'var(--color-border)' };
+    return {
+      bg: 'var(--color-surface-subtle)',
+      border: 'var(--color-border)',
+      color: 'var(--color-text-muted)',
+      barColor: 'var(--color-border)',
+    };
   }
   if (intensity < 25) {
-    return { bg: 'rgba(59, 130, 246, 0.15)', text: 'var(--color-primary)', border: 'rgba(59, 130, 246, 0.3)' };
+    return {
+      bg: 'rgba(59, 130, 246, 0.12)',
+      border: 'rgba(59, 130, 246, 0.3)',
+      color: 'var(--color-primary)',
+      barColor: '#3b82f6',
+    };
   }
   if (intensity < 55) {
-    return { bg: 'rgba(16, 185, 129, 0.25)', text: '#059669', border: 'rgba(16, 185, 129, 0.4)' };
+    return {
+      bg: 'rgba(16, 185, 129, 0.14)',
+      border: 'rgba(16, 185, 129, 0.35)',
+      color: '#059669',
+      barColor: '#10b981',
+    };
   }
   if (intensity < 80) {
-    return { bg: 'rgba(245, 158, 11, 0.35)', text: '#b45309', border: 'rgba(245, 158, 11, 0.5)' };
+    return {
+      bg: 'rgba(245, 158, 11, 0.15)',
+      border: 'rgba(245, 158, 11, 0.4)',
+      color: '#d97706',
+      barColor: '#f59e0b',
+    };
   }
-  return { bg: 'rgba(239, 68, 68, 0.45)', text: '#b91c1c', border: 'rgba(239, 68, 68, 0.6)' };
+  return {
+    bg: 'rgba(239, 68, 68, 0.18)',
+    border: 'rgba(239, 68, 68, 0.45)',
+    color: '#dc2626',
+    barColor: '#ef4444',
+  };
 };
 
 export const ReadingHeatmapSection: React.FC<ReadingHeatmapSectionProps> = ({ onShowToast }) => {
@@ -51,8 +76,9 @@ export const ReadingHeatmapSection: React.FC<ReadingHeatmapSectionProps> = ({ on
   const [loadingSummary, setLoadingSummary] = useState<boolean>(true);
   const [loadingHeatmap, setLoadingHeatmap] = useState<boolean>(false);
   const [hoveredPage, setHoveredPage] = useState<HeatmapPageStat | null>(null);
+  const [viewMode, setViewMode] = useState<'chart' | 'grid'>('chart');
 
-  // 1. Fetch Summary list of studied manuscripts
+  // Load summary list of studied manuscripts
   const loadSummary = async () => {
     setLoadingSummary(true);
     try {
@@ -75,7 +101,7 @@ export const ReadingHeatmapSection: React.FC<ReadingHeatmapSectionProps> = ({ on
     loadSummary();
   }, []);
 
-  // 2. Fetch Heatmap detail when selectedEprintId changes
+  // Fetch Heatmap detail when selected manuscript changes
   useEffect(() => {
     if (!selectedEprintId) return;
 
@@ -102,22 +128,50 @@ export const ReadingHeatmapSection: React.FC<ReadingHeatmapSectionProps> = ({ on
     };
   }, [selectedEprintId]);
 
+  const maxDuration = Math.max(
+    ...(heatmapData?.pages?.map((p) => p.totalDurationSeconds) || [1]),
+    1
+  );
+
   return (
-    <div style={{ marginTop: 24 }}>
+    <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--color-border)' }}>
       {/* Section Header */}
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16 }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-primary)' }}>
-                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-              </svg>
-              Heatmap & Durasi Membaca per Halaman Naskah
+      <div
+        style={{
+          padding: '16px 20px',
+          borderBottom: '1px solid var(--color-border)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
+          backgroundColor: 'var(--color-surface-subtle)',
+        }}
+      >
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--color-text)', letterSpacing: '-0.01em' }}>
+              Heatmap & Durasi Membaca per Halaman
             </h3>
-            <p style={{ fontSize: 12.5, color: 'var(--color-text-muted)', margin: '4px 0 0' }}>
-              Analisis waktu nyata halaman & bab skripsi/tesis yang paling intensif dipelajari oleh pemustaka
-            </p>
+            <span style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+              TELEMETRI NASKAH
+            </span>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: '2px 0 0' }}>
+            Analisis waktu nyata halaman dan bab naskah yang paling intensif dipelajari pemustaka
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {/* Micro Stats */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, color: 'var(--color-text-muted)' }}>
+            <span>
+              Total Baca: <strong style={{ color: 'var(--color-text)', fontFamily: 'var(--font-mono)' }}>{formatDuration(overallTotalSeconds)}</strong>
+            </span>
+            <span style={{ color: 'var(--color-border)' }}>|</span>
+            <span>
+              Pembaca: <strong style={{ color: 'var(--color-text)', fontFamily: 'var(--font-mono)' }}>{overallUniqueReaders}</strong>
+            </span>
           </div>
 
           <button
@@ -125,85 +179,67 @@ export const ReadingHeatmapSection: React.FC<ReadingHeatmapSectionProps> = ({ on
             className="btn btn-secondary btn-sm"
             onClick={loadSummary}
             disabled={loadingSummary}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            style={{ fontSize: 11.5, padding: '4px 10px', height: 28 }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="23 4 23 10 17 10" />
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-            </svg>
-            <span>Segarkan Data</span>
+            Segarkan
           </button>
-        </div>
-
-        {/* Global Reading KPIs */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginTop: 16 }}>
-          <div style={{ padding: '12px 14px', backgroundColor: 'var(--color-surface-subtle)', borderRadius: 8, border: '1px solid var(--color-border)' }}>
-            <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginBottom: 4 }}>Total Durasi Membaca (Semua Naskah)</div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--color-primary)' }}>
-              {formatDuration(overallTotalSeconds)}
-            </div>
-          </div>
-
-          <div style={{ padding: '12px 14px', backgroundColor: 'var(--color-surface-subtle)', borderRadius: 8, border: '1px solid var(--color-border)' }}>
-            <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginBottom: 4 }}>Pemustaka Yang Aktif Mengkaji</div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: '#10b981' }}>
-              {overallUniqueReaders.toLocaleString('id-ID')} mahasiswa
-            </div>
-          </div>
-
-          <div style={{ padding: '12px 14px', backgroundColor: 'var(--color-surface-subtle)', borderRadius: 8, border: '1px solid var(--color-border)' }}>
-            <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginBottom: 4 }}>Naskah Terdata Waktu Baca</div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--color-text)' }}>
-              {summaryList.length} naskah
-            </div>
-          </div>
         </div>
       </div>
 
       {summaryList.length === 0 && !loadingSummary ? (
-        <div className="card" style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--color-text-muted)' }}>
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.5, marginBottom: 10 }}>
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>Belum Ada Data Durasi Membaca Halaman</div>
-          <p style={{ fontSize: 12.5, maxWidth: 460, margin: '6px auto 0' }}>
-            Data durasi membaca akan otomatis terakumulasi dan membentuk peta heatmap saat pemustaka membuka naskah PDF di portal katalog.
-          </p>
+        <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--color-text-muted)', fontSize: 13 }}>
+          Belum ada log durasi membaca halaman yang tercatat dari pemustaka.
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 340px) 1fr', gap: 20, alignItems: 'start' }}>
-          {/* Left Column: List of Studied Manuscripts */}
-          <div className="card" style={{ margin: 0, padding: '16px 14px' }}>
-            <h4 style={{ fontSize: 13.5, fontWeight: 700, margin: '0 0 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>Daftar Naskah Terkaji</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)' }}>{summaryList.length} item</span>
-            </h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', minHeight: 440 }}>
+          {/* Left Column: Clean Master List */}
+          <div
+            style={{
+              borderRight: '1px solid var(--color-border)',
+              backgroundColor: 'var(--color-surface)',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <div
+              style={{
+                padding: '10px 14px',
+                fontSize: 11,
+                fontWeight: 700,
+                color: 'var(--color-text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                borderBottom: '1px solid var(--color-border)',
+                backgroundColor: 'var(--color-surface-subtle)',
+                display: 'flex',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span>Naskah Terdata</span>
+              <span style={{ fontFamily: 'var(--font-mono)' }}>{summaryList.length}</span>
+            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 520, overflowY: 'auto' }}>
+            <div style={{ overflowY: 'auto', flex: 1, maxHeight: 520 }}>
               {summaryList.map((item) => {
                 const isSelected = selectedEprintId === item.eprint_id;
                 return (
-                  <button
+                  <div
                     key={item.eprint_id}
-                    type="button"
                     onClick={() => setSelectedEprintId(item.eprint_id)}
                     style={{
-                      display: 'block',
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '10px 12px',
-                      borderRadius: 8,
-                      border: isSelected ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
-                      backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--color-surface)',
+                      padding: '12px 14px',
+                      borderBottom: '1px solid var(--color-border)',
+                      backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.06)' : 'transparent',
+                      borderLeft: isSelected ? '3px solid var(--color-primary)' : '3px solid transparent',
                       cursor: 'pointer',
-                      transition: 'all 0.15s ease',
+                      transition: 'background 0.12s ease',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginBottom: 3 }}>
-                      <span className="badge badge-unpublish" style={{ fontSize: 10 }}>#{item.eprint_id}</span>
-                      <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-primary)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>
+                        #{item.eprint_id}
+                      </span>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: isSelected ? 'var(--color-primary)' : 'var(--color-text)', fontFamily: 'var(--font-mono)' }}>
                         {formatDuration(item.total_duration_seconds)}
                       </span>
                     </div>
@@ -211,9 +247,9 @@ export const ReadingHeatmapSection: React.FC<ReadingHeatmapSectionProps> = ({ on
                     <div
                       style={{
                         fontSize: 12.5,
-                        fontWeight: isSelected ? 700 : 500,
+                        fontWeight: isSelected ? 600 : 500,
                         color: 'var(--color-text)',
-                        lineHeight: 1.3,
+                        lineHeight: 1.35,
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         display: '-webkit-box',
@@ -224,184 +260,318 @@ export const ReadingHeatmapSection: React.FC<ReadingHeatmapSectionProps> = ({ on
                       {item.article_title}
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6 }}>
-                      <span>👤 {item.unique_readers} pembaca</span>
-                      <span>•</span>
-                      <span>📑 {item.pages_covered} hal dibaca</span>
+                    <div style={{ display: 'flex', gap: 8, fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6 }}>
+                      <span>{item.unique_readers} pembaca</span>
+                      <span>·</span>
+                      <span>{item.pages_covered} hal</span>
+                      <span>·</span>
+                      <span>{item.total_events} sesi</span>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
           </div>
 
-          {/* Right Column: Interactive Heatmap Visualizer */}
-          <div className="card" style={{ margin: 0 }}>
+          {/* Right Column: Detailed Heatmap & Histogram */}
+          <div style={{ padding: '18px 22px', backgroundColor: 'var(--color-surface)', overflowY: 'auto' }}>
             {loadingHeatmap ? (
-              <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--color-text-muted)' }}>
-                <div className="spinner" style={{ margin: '0 auto 12px' }} />
-                <span>Memuat data heatmap halaman naskah...</span>
+              <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                Memuat data telemetri naskah...
               </div>
             ) : heatmapData ? (
               <div>
-                {/* Manuscript Info Header */}
-                <div style={{ paddingBottom: 16, borderBottom: '1px solid var(--color-border)', marginBottom: 18 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <span className="badge badge-publish" style={{ fontSize: 10.5 }}>EPrint #{heatmapData.eprintId}</span>
-                    <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-                      Total {heatmapData.pages.length} Halaman Terdata
+                {/* Manuscript Header */}
+                <div style={{ paddingBottom: 14, borderBottom: '1px solid var(--color-border)', marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-primary)' }}>
+                      EPRINT #{heatmapData.eprintId}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>·</span>
+                    <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)' }}>
+                      {heatmapData.pages.length} Halaman Terdata
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>·</span>
+                    <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)' }}>
+                      Total Waktu: <strong style={{ color: 'var(--color-text)' }}>{formatDuration(heatmapData.grandTotalSeconds)}</strong>
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>·</span>
+                    <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)' }}>
+                      {heatmapData.totalUniqueReaders} Pembaca
                     </span>
                   </div>
-                  <h4 style={{ fontSize: 16, fontWeight: 700, margin: '4px 0 8px', color: 'var(--color-text)', lineHeight: 1.35 }}>
+
+                  <h4 style={{ fontSize: 15, fontWeight: 700, margin: '2px 0 0', color: 'var(--color-text)', lineHeight: 1.4 }}>
                     {heatmapData.articleTitle}
                   </h4>
-
-                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--color-text-muted)' }}>
-                    <span>⏱️ Total Waktu: <strong style={{ color: 'var(--color-text)' }}>{formatDuration(heatmapData.grandTotalSeconds)}</strong></span>
-                    <span>👥 Total Pembaca: <strong style={{ color: 'var(--color-text)' }}>{heatmapData.totalUniqueReaders} orang</strong></span>
-                    <span>🔄 Sesi Interaksi: <strong style={{ color: 'var(--color-text)' }}>{heatmapData.totalReadingEvents}x</strong></span>
-                  </div>
                 </div>
 
-                {/* Heatmap Spectrum Legend */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text)' }}>
-                    Peta Intensitas Waktu Membaca (Per Halaman):
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--color-text-muted)' }}>
-                    <span>Cepat (0m)</span>
-                    <div style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: 'var(--color-surface-subtle)', border: '1px solid var(--color-border)' }} />
-                    <div style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: 'rgba(59, 130, 246, 0.25)', border: '1px solid rgba(59, 130, 246, 0.4)' }} />
-                    <div style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: 'rgba(16, 185, 129, 0.35)', border: '1px solid rgba(16, 185, 129, 0.5)' }} />
-                    <div style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: 'rgba(245, 158, 11, 0.45)', border: '1px solid rgba(245, 158, 11, 0.6)' }} />
-                    <div style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: 'rgba(239, 68, 68, 0.6)', border: '1px solid rgba(239, 68, 68, 0.7)' }} />
-                    <span>Intensif / Lama</span>
-                  </div>
-                </div>
-
-                {/* Page Heatmap Grid */}
+                {/* View Controls & Intensity Legend */}
                 <div
                   style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))',
-                    gap: 8,
-                    maxHeight: 280,
-                    overflowY: 'auto',
-                    padding: '8px 4px',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 8,
-                    backgroundColor: 'var(--color-surface-subtle)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: 10,
+                    marginBottom: 14,
                   }}
                 >
-                  {heatmapData.pages.map((p) => {
-                    const color = getHeatmapColor(p.intensityScore);
-                    const isHovered = hoveredPage?.pageNumber === p.pageNumber;
+                  {/* View Switcher */}
+                  <div style={{ display: 'flex', gap: 4, backgroundColor: 'var(--color-surface-subtle)', padding: 2, borderRadius: 6, border: '1px solid var(--color-border)' }}>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('chart')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        borderRadius: 4,
+                        border: 'none',
+                        background: viewMode === 'chart' ? 'var(--color-surface)' : 'transparent',
+                        color: viewMode === 'chart' ? 'var(--color-text)' : 'var(--color-text-muted)',
+                        boxShadow: viewMode === 'chart' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Distribusi Waktu (Grafik)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('grid')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        borderRadius: 4,
+                        border: 'none',
+                        background: viewMode === 'grid' ? 'var(--color-surface)' : 'transparent',
+                        color: viewMode === 'grid' ? 'var(--color-text)' : 'var(--color-text-muted)',
+                        boxShadow: viewMode === 'grid' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Matriks Halaman
+                    </button>
+                  </div>
 
-                    return (
-                      <div
-                        key={p.pageNumber}
-                        onMouseEnter={() => setHoveredPage(p)}
-                        style={{
-                          backgroundColor: color.bg,
-                          border: isHovered ? '2px solid var(--color-primary)' : `1px solid ${color.border}`,
-                          borderRadius: 6,
-                          padding: '8px 4px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                          transform: isHovered ? 'scale(1.05)' : 'scale(1)',
-                          boxShadow: isHovered ? '0 4px 10px rgba(0,0,0,0.1)' : 'none',
-                        }}
-                      >
-                        <span style={{ fontSize: 11, fontWeight: 700, color: color.text }}>
-                          Hal {p.pageNumber}
-                        </span>
-                        <span style={{ fontSize: 10, color: color.text, opacity: 0.85, marginTop: 2 }}>
-                          {formatDuration(p.totalDurationSeconds)}
-                        </span>
-                      </div>
-                    );
-                  })}
+                  {/* Clean Legend */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--color-text-muted)' }}>
+                    <span>Rendah</span>
+                    <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: 'var(--color-surface-subtle)', border: '1px solid var(--color-border)' }} />
+                    <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: 'rgba(59, 130, 246, 0.25)' }} />
+                    <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: 'rgba(16, 185, 129, 0.35)' }} />
+                    <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: 'rgba(245, 158, 11, 0.45)' }} />
+                    <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: 'rgba(239, 68, 68, 0.6)' }} />
+                    <span>Tinggi</span>
+                  </div>
                 </div>
 
-                {/* Hover Detail Card */}
-                {hoveredPage ? (
+                {/* VIEW 1: Histogram Distribution Chart */}
+                {viewMode === 'chart' ? (
                   <div
                     style={{
-                      marginTop: 14,
-                      padding: '10px 14px',
-                      backgroundColor: 'var(--color-surface)',
-                      border: '1px solid var(--color-primary)',
+                      padding: '16px 14px 10px',
+                      backgroundColor: 'var(--color-surface-subtle)',
+                      border: '1px solid var(--color-border)',
                       borderRadius: 8,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: 8,
-                      fontSize: 12.5,
+                      marginBottom: 16,
                     }}
                   >
-                    <div>
-                      <strong>Halaman {hoveredPage.pageNumber}</strong>: Total dikaji selama{' '}
-                      <strong style={{ color: 'var(--color-primary)' }}>{formatDuration(hoveredPage.totalDurationSeconds)}</strong>
-                      {' '}(Rata-rata {formatDuration(hoveredPage.avgDurationSeconds)} per pembaca).
-                    </div>
-                    <div style={{ color: 'var(--color-text-muted)' }}>
-                      Dibaca {hoveredPage.viewCount}x oleh {hoveredPage.uniqueReaders} pemustaka (Intensitas: {hoveredPage.intensityScore}%)
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 130, overflowX: 'auto', paddingBottom: 6 }}>
+                      {heatmapData.pages.map((p) => {
+                        const style = getIntensityStyle(p.intensityScore);
+                        const heightPct = Math.max(Math.round((p.totalDurationSeconds / maxDuration) * 100), 12);
+                        const isHovered = hoveredPage?.pageNumber === p.pageNumber;
+
+                        return (
+                          <div
+                            key={p.pageNumber}
+                            onMouseEnter={() => setHoveredPage(p)}
+                            style={{
+                              flex: '0 0 44px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              height: '100%',
+                              justifyContent: 'flex-end',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 9.5,
+                                fontFamily: 'var(--font-mono)',
+                                color: isHovered ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                                marginBottom: 4,
+                                fontWeight: isHovered ? 700 : 500,
+                              }}
+                            >
+                              {formatDuration(p.totalDurationSeconds)}
+                            </span>
+
+                            <div
+                              style={{
+                                width: '100%',
+                                height: `${heightPct}%`,
+                                backgroundColor: style.barColor,
+                                opacity: isHovered ? 1 : 0.75,
+                                borderRadius: '3px 3px 0 0',
+                                transition: 'all 0.15s ease',
+                                outline: isHovered ? '2px solid var(--color-text)' : 'none',
+                              }}
+                            />
+
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontFamily: 'var(--font-mono)',
+                                color: isHovered ? 'var(--color-text)' : 'var(--color-text-muted)',
+                                marginTop: 6,
+                                fontWeight: isHovered ? 700 : 500,
+                              }}
+                            >
+                              p.{p.pageNumber}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : (
-                  <div style={{ marginTop: 10, fontSize: 11.5, color: 'var(--color-text-muted)', textAlign: 'center' }}>
-                    Arahkan kursor pada kotak halaman di atas untuk melihat detail durasi dan frekuensi baca.
+                  /* VIEW 2: Dense GitHub-style Grid */
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(52px, 1fr))',
+                      gap: 6,
+                      maxHeight: 220,
+                      overflowY: 'auto',
+                      padding: 10,
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 8,
+                      backgroundColor: 'var(--color-surface-subtle)',
+                      marginBottom: 16,
+                    }}
+                  >
+                    {heatmapData.pages.map((p) => {
+                      const style = getIntensityStyle(p.intensityScore);
+                      const isHovered = hoveredPage?.pageNumber === p.pageNumber;
+
+                      return (
+                        <div
+                          key={p.pageNumber}
+                          onMouseEnter={() => setHoveredPage(p)}
+                          style={{
+                            backgroundColor: style.bg,
+                            border: isHovered ? '1.5px solid var(--color-primary)' : `1px solid ${style.border}`,
+                            borderRadius: 4,
+                            padding: '6px 2px',
+                            textAlign: 'center',
+                            cursor: 'pointer',
+                            transition: 'all 0.12s ease',
+                          }}
+                        >
+                          <div style={{ fontSize: 10.5, fontWeight: 700, color: style.color, fontFamily: 'var(--font-mono)' }}>
+                            p.{p.pageNumber}
+                          </div>
+                          <div style={{ fontSize: 9.5, color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>
+                            {formatDuration(p.totalDurationSeconds)}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
-                {/* Top Peak Studied Pages (Bab / Bagian Teratas) */}
+                {/* Sleek Tooltip Details Bar */}
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: 6,
+                    backgroundColor: hoveredPage ? 'rgba(59, 130, 246, 0.05)' : 'var(--color-surface-subtle)',
+                    border: '1px solid var(--color-border)',
+                    fontSize: 12,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                    marginBottom: 16,
+                  }}
+                >
+                  {hoveredPage ? (
+                    <>
+                      <div>
+                        <strong>Halaman {hoveredPage.pageNumber}</strong>: Total{' '}
+                        <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-primary)' }}>
+                          {formatDuration(hoveredPage.totalDurationSeconds)}
+                        </span>
+                        {' '}(rata-rata {formatDuration(hoveredPage.avgDurationSeconds)}/sesi)
+                      </div>
+                      <div style={{ color: 'var(--color-text-muted)', fontSize: 11.5 }}>
+                        {hoveredPage.viewCount}x interaksi · {hoveredPage.uniqueReaders} pembaca · Skor Intensitas: {hoveredPage.intensityScore}%
+                      </div>
+                    </>
+                  ) : (
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: 11.5 }}>
+                      Arahkan kursor pada batang atau kotak halaman untuk meninjau rincian durasi.
+                    </span>
+                  )}
+                </div>
+
+                {/* Clean Top Focus Pages Table */}
                 {heatmapData.peakPages && heatmapData.peakPages.length > 0 && (
-                  <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--color-border)' }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8, color: 'var(--color-text)' }}>
-                      🏆 Halaman Paling Lama & Sering Dikaji (Top Focus Pages):
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                      Halaman Paling Intensif Dikaji
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
-                      {heatmapData.peakPages.map((peak, idx) => (
-                        <div
-                          key={peak.pageNumber}
-                          style={{
-                            padding: '8px 10px',
-                            backgroundColor: 'var(--color-surface)',
-                            border: '1px solid var(--color-border)',
-                            borderRadius: 6,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 8,
-                          }}
-                        >
-                          <span
-                            style={{
-                              width: 20,
-                              height: 20,
-                              borderRadius: '50%',
-                              backgroundColor: idx === 0 ? '#fbbf24' : idx === 1 ? '#94a3b8' : '#cbd5e1',
-                              color: '#0f172a',
-                              display: 'grid',
-                              placeItems: 'center',
-                              fontSize: 10.5,
-                              fontWeight: 800,
-                            }}
-                          >
-                            {idx + 1}
-                          </span>
-                          <div style={{ fontSize: 12 }}>
-                            <div><strong>Halaman {peak.pageNumber}</strong></div>
-                            <div style={{ fontSize: 11, color: 'var(--color-primary)', fontWeight: 600 }}>
-                              {formatDuration(peak.totalDurationSeconds)} ({peak.uniqueReaders} pembaca)
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+
+                    <div style={{ border: '1px solid var(--color-border)', borderRadius: 6, overflow: 'hidden' }}>
+                      <table className="data-table" style={{ margin: 0, fontSize: 12 }}>
+                        <thead>
+                          <tr>
+                            <th style={{ width: 60, textAlign: 'center' }}>Posisi</th>
+                            <th style={{ width: 90 }}>Halaman</th>
+                            <th>Durasi Akumulasi</th>
+                            <th style={{ width: 120, textAlign: 'center' }}>Rata-rata/Sesi</th>
+                            <th style={{ width: 100, textAlign: 'center' }}>Pembaca</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {heatmapData.peakPages.map((peak, idx) => {
+                            const pct = Math.round((peak.totalDurationSeconds / maxDuration) * 100);
+                            return (
+                              <tr key={peak.pageNumber}>
+                                <td style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-text-muted)' }}>
+                                  #{idx + 1}
+                                </td>
+                                <td>
+                                  <span className="badge badge-unpublish" style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)' }}>
+                                    Halaman {peak.pageNumber}
+                                  </span>
+                                </td>
+                                <td>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <div style={{ flex: 1, maxWidth: 120, height: 6, backgroundColor: 'var(--color-border)', borderRadius: 3, overflow: 'hidden' }}>
+                                      <div style={{ width: `${pct}%`, height: '100%', backgroundColor: 'var(--color-primary)' }} />
+                                    </div>
+                                    <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-text)' }}>
+                                      {formatDuration(peak.totalDurationSeconds)}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>
+                                  {formatDuration(peak.avgDurationSeconds)}
+                                </td>
+                                <td style={{ textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                                  {peak.uniqueReaders} pemustaka
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 )}

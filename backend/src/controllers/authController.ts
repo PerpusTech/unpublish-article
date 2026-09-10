@@ -236,10 +236,84 @@ export class AuthController {
 
       const role = (user.role || '').toUpperCase();
       if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
-        const errorMsg = encodeURIComponent(
-          `Akun SSO (${targetEmail}) berhasil terhubung, namun role Anda adalah "${user.role}". Hubungi Admin Perpustakaan untuk diberikan hak akses Admin.`
+        // This is a Patron / Student / Civitas UMS!
+        // Automatically activate patron reading session with verified identity
+        const rawNim =
+          authResult.attributes?.['nim'] ||
+          authResult.attributes?.['mhs_nim'] ||
+          authResult.attributes?.['nip'] ||
+          authResult.attributes?.['nik'] ||
+          authResult.username ||
+          targetEmail.split('@')[0] ||
+          'CIVITAS';
+
+        const cleanNim = rawNim.trim().toUpperCase();
+        let cleanName = (user.name || authResult.name || campusUser?.name || '').trim();
+        if (!cleanName || cleanName === cleanNim || cleanName === authResult.username) {
+          const campusName = await CasService.resolveCampusName(cleanNim);
+          cleanName = campusName || authResult.username || 'Civitas Akademika UMS';
+        }
+
+        const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() || req.socket.remoteAddress || '127.0.0.1';
+        const sanitizedIp = clientIp.replace(/[^a-zA-Z0-9]/g, '_');
+        const sessionId = `sso_${sanitizedIp}_${cleanNim}_${Date.now().toString(36)}`;
+        const tokenCode = `SSO-${cleanNim}`;
+
+        const now = new Date().toISOString();
+        const expiresAt = new Date(Date.now() + 86400000).toISOString(); // 24 hours
+        const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+
+        // Set cookies for intranet/patron identification
+        const cookieOptions = {
+          httpOnly: false,
+          secure: isHttps,
+          sameSite: 'lax' as const,
+          maxAge: 24 * 60 * 60 * 1000,
+          path: '/',
+        };
+
+        res.cookie('ums_intranet_nim', cleanNim, cookieOptions);
+        res.cookie('ums_intranet_name', cleanName, cookieOptions);
+
+        // Audit log
+        const userAgent = (Array.isArray(req.headers['user-agent']) ? req.headers['user-agent'][0] : req.headers['user-agent']) || 'Unknown';
+        const { AuditService } = await import('../services/auditService');
+        AuditService.logAction({
+          tokenId: sessionId,
+          patronNim: cleanNim,
+          patronName: cleanName,
+          action: 'ACTIVATE_TOKEN',
+          articleTitle: `Login Terverifikasi SSO UMS (${cleanName})`,
+          ipAddress: clientIp,
+          userAgent,
+        });
+
+        // Persist to tokens table so it is managed in active sessions
+        try {
+          await query.run('DELETE FROM tokens WHERE id = ? OR token_code = ?', [sessionId, tokenCode]);
+          await query.run(
+            `INSERT INTO tokens (
+              id, token_code, patron_name, patron_nim, duration_minutes,
+              status, created_by_admin, created_at, claimed_at, expires_at, notes
+            ) VALUES (?, ?, ?, ?, 1440, 'ACTIVE', 'CAS_SSO', ?, ?, ?, ?)`,
+            [
+              sessionId,
+              tokenCode,
+              cleanName,
+              cleanNim,
+              now,
+              now,
+              expiresAt,
+              `Login Otomatis SSO UMS auth.ums.ac.id (${clientIp})`,
+            ]
+          );
+        } catch (dbErr) {
+          console.warn('[AuthController] Warning persisting SSO token:', dbErr);
+        }
+
+        res.redirect(
+          `${frontendBase}/?patron_sso=success&nim=${encodeURIComponent(cleanNim)}&name=${encodeURIComponent(cleanName)}&token_id=${encodeURIComponent(sessionId)}&token_code=${encodeURIComponent(tokenCode)}&expires_at=${encodeURIComponent(expiresAt)}`
         );
-        res.redirect(`${frontendBase}/?sso_pending=${errorMsg}`);
         return;
       }
 

@@ -3429,3 +3429,23 @@ a:hover {
     color: #000000;
   }
 }
+
+/* ==========================================================================
+   Search Query Text Highlighting
+   ========================================================================== */
+.search-highlight-mark {
+  background-color: #fef08a !important; /* Soft warm amber-yellow */
+  color: #0f172a !important;
+  font-weight: 700;
+  border-radius: 3px;
+  padding: 1px 3px;
+  margin: 0 0.5px;
+  box-shadow: 0 0 0 1px rgba(234, 179, 8, 0.35);
+  display: inline;
+}
+
+[data-theme="dark"] .search-highlight-mark {
+  background-color: rgba(245, 158, 11, 0.4) !important;
+  color: #fef08a !important;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.5);
+}

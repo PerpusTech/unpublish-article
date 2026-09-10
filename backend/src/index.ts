@@ -81,6 +81,8 @@ api.delete('/admin/users/:email', requireAdminAuth, UserController.deleteUser);
 
 // ================= PATRON SESSION & TELEMETRY ROUTES =================
 api.get('/patron/network-status', SettingController.getPatronNetworkStatus);
+api.get('/patron/sso/login', SettingController.patronCasLogin);
+api.get('/patron/sso/callback', SettingController.patronCasCallback);
 api.post('/patron/intranet-checkin', SettingController.intranetCheckin);
 api.post('/patron/session/claim', TokenController.claimToken);
 api.get('/patron/session/status', TokenController.getSessionStatus);

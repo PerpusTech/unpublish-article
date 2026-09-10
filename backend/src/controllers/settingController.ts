@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { SecuritySettingService, AccessControlMode } from '../services/securitySettingService';
+import { CasService } from '../services/casService';
+import { ENV } from '../config/env';
 
 export class SettingController {
   /**
@@ -226,6 +228,123 @@ export class SettingController {
     } catch (err: any) {
       console.error('[SettingController] Error updateSecuritySettings:', err);
       res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Gagal menyimpan pengaturan keamanan.' } });
+    }
+  }
+
+  /**
+   * Initiate CAS SSO Login for Patrons (Students/Lecturers)
+   */
+  public static patronCasLogin(req: Request, res: Response): void {
+    const loginUrl = CasService.getPatronLoginUrl();
+    const switchAccountUrl = CasService.getPatronLogoutUrl(loginUrl);
+    res.json({ url: loginUrl, switchAccountUrl });
+  }
+
+  /**
+   * Handle CAS SSO Callback for Patrons
+   */
+  public static async patronCasCallback(req: Request, res: Response): Promise<void> {
+    const ticket = req.query.ticket as string;
+    const frontendBase = ENV.FRONTEND_URL;
+
+    if (!ticket) {
+      res.redirect(`${frontendBase}/?patron_sso_error=NO_CAS_TICKET`);
+      return;
+    }
+
+    try {
+      const patronServiceUrl = ENV.CAS_SERVICE_URL;
+      const authResult = await CasService.validateTicket(ticket, patronServiceUrl);
+
+      if (!authResult.success) {
+        const errorMsg = encodeURIComponent(authResult.error || 'Autentikasi SSO UMS gagal.');
+        res.redirect(`${frontendBase}/?patron_sso_error=${errorMsg}`);
+        return;
+      }
+
+      // Extract NIM/UniID
+      const rawNim =
+        authResult.attributes?.['nim'] ||
+        authResult.attributes?.['mhs_nim'] ||
+        authResult.attributes?.['nip'] ||
+        authResult.attributes?.['nik'] ||
+        authResult.username ||
+        authResult.email?.split('@')[0] ||
+        'CIVITAS';
+
+      const cleanNim = rawNim.trim().toUpperCase();
+
+      // Extract official full name
+      let cleanName = (authResult.name || '').trim();
+      if (!cleanName || cleanName === cleanNim || cleanName === authResult.username) {
+        const campusName = await CasService.resolveCampusName(cleanNim);
+        cleanName = campusName || authResult.username || 'Civitas Akademika UMS';
+      }
+
+      const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() || req.socket.remoteAddress || '127.0.0.1';
+      const sanitizedIp = clientIp.replace(/[^a-zA-Z0-9]/g, '_');
+      const sessionId = `sso_${sanitizedIp}_${cleanNim}_${Date.now().toString(36)}`;
+      const tokenCode = `SSO-${cleanNim}`;
+
+      const now = new Date().toISOString();
+      const expiresAt = new Date(Date.now() + 86400000).toISOString(); // 24 hours
+
+      // Set cookie
+      const cookieOptions = {
+        httpOnly: false,
+        secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+        sameSite: 'lax' as const,
+        maxAge: 24 * 60 * 60 * 1000,
+        path: '/',
+      };
+
+      res.cookie('ums_intranet_nim', cleanNim, cookieOptions);
+      res.cookie('ums_intranet_name', cleanName, cookieOptions);
+
+      // Audit log
+      const userAgent = (Array.isArray(req.headers['user-agent']) ? req.headers['user-agent'][0] : req.headers['user-agent']) || 'Unknown';
+      const { AuditService } = await import('../services/auditService');
+      AuditService.logAction({
+        tokenId: sessionId,
+        patronNim: cleanNim,
+        patronName: cleanName,
+        action: 'ACTIVATE_TOKEN',
+        articleTitle: `Login Terverifikasi SSO UMS (${cleanName})`,
+        ipAddress: clientIp,
+        userAgent,
+      });
+
+      // Persist to tokens table so it is managed in active sessions
+      const { query } = await import('../config/appDb');
+      try {
+        await query.run('DELETE FROM tokens WHERE id = ? OR token_code = ?', [sessionId, tokenCode]);
+        await query.run(
+          `INSERT INTO tokens (
+            id, token_code, patron_name, patron_nim, duration_minutes,
+            status, created_by_admin, created_at, claimed_at, expires_at, notes
+          ) VALUES (?, ?, ?, ?, 1440, 'ACTIVE', 'CAS_SSO', ?, ?, ?, ?)`,
+          [
+            sessionId,
+            tokenCode,
+            cleanName,
+            cleanNim,
+            now,
+            now,
+            expiresAt,
+            `Login Otomatis SSO UMS auth.ums.ac.id (${clientIp})`,
+          ]
+        );
+      } catch (dbErr) {
+        console.warn('[SettingController] Warning persisting SSO token:', dbErr);
+      }
+
+      res.redirect(
+        `${frontendBase}/?patron_sso=success&nim=${encodeURIComponent(cleanNim)}&name=${encodeURIComponent(cleanName)}&token_id=${encodeURIComponent(sessionId)}&token_code=${encodeURIComponent(tokenCode)}&expires_at=${encodeURIComponent(expiresAt)}`
+      );
+    } catch (err: any) {
+      console.error('[Patron CAS Callback Error]:', err);
+      const errorMsg = encodeURIComponent('Terjadi kesalahan saat memproses identitas SSO.');
+      res.redirect(`${frontendBase}/?patron_sso_error=${errorMsg}`);
     }
   }
 }

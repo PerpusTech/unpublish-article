@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { api, ArticleItem } from '../../services/api';
+import { HighlightText } from '../common/HighlightText';
 
 interface ArticleDetailModalProps {
   article: ArticleItem | null;
+  searchQuery?: string;
   onClose: () => void;
   onOpenPdf: (articleId: number, docId: number, title: string) => void;
 }
 
 export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({
   article,
+  searchQuery,
   onClose,
   onOpenPdf,
 }) => {
@@ -136,7 +139,7 @@ export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({
               )}
             </div>
             <h2 className="modal-title" style={{ fontSize: 19, lineHeight: 1.35, color: 'var(--color-text)', margin: 0 }}>
-              {currentArticle.title}
+              <HighlightText text={currentArticle.title} query={searchQuery} />
             </h2>
           </div>
           <button
@@ -343,10 +346,12 @@ export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({
                           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                           <circle cx="12" cy="7" r="4" />
                         </svg>
-                        <span className="author-chip-name">{author}</span>
+                        <span className="author-chip-name">
+                          <HighlightText text={author} query={searchQuery} />
+                        </span>
                         {idx === 0 && (currentArticle.id_number || currentArticle.nim) && (
                           <span className="author-chip-nim" title="Nomor Identifikasi / NIM Penulis">
-                            ({currentArticle.id_number || currentArticle.nim})
+                            (<HighlightText text={currentArticle.id_number || currentArticle.nim} query={searchQuery} />)
                           </span>
                         )}
                       </span>
@@ -377,7 +382,9 @@ export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({
               <h4 style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.6px', textTransform: 'uppercase', color: 'var(--color-text-light)', marginBottom: 6 }}>
                 Program Studi / Fakultas
               </h4>
-              <p style={{ fontSize: 13.5, margin: 0, color: 'var(--color-text)' }}>{currentArticle.department}</p>
+              <p style={{ fontSize: 13.5, margin: 0, color: 'var(--color-text)' }}>
+                <HighlightText text={currentArticle.department} query={searchQuery} />
+              </p>
             </div>
           )}
 
@@ -399,7 +406,10 @@ export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({
                 overflowY: 'auto',
               }}
             >
-              {currentArticle.abstract || 'Abstrak ringkas tidak disertakan pada rekaman repositori ini.'}
+              <HighlightText
+                text={currentArticle.abstract || 'Abstrak ringkas tidak disertakan pada rekaman repositori ini.'}
+                query={searchQuery}
+              />
             </div>
           </div>
         </div>
