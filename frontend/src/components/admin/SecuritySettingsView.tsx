@@ -5,6 +5,7 @@ import {
   SecuritySettingsResponse,
 } from '../../services/api';
 import { formatDateTime } from '../../utils/date';
+import { ConfirmModal } from '../common/ConfirmModal';
 
 interface SecuritySettingsViewProps {
   onShowToast?: (message: string, type?: 'success' | 'danger') => void;
@@ -24,6 +25,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ onSh
   const [saving, setSaving] = useState<boolean>(false);
   const [currentClientIp, setCurrentClientIp] = useState<string>('127.0.0.1');
   const [isClientInUms, setIsClientInUms] = useState<boolean>(true);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Active form states
   const [selectedMode, setSelectedMode] = useState<AccessControlMode>('HYBRID');
@@ -115,10 +117,13 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ onSh
   };
 
   const handleResetToDefaults = () => {
-    if (confirm('Kembalikan daftar subnet UMS ke konfigurasi standar (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, localhost)?')) {
-      setIpList(DEFAULT_UMS_SUBNETS);
-      onShowToast?.('Daftar subnet dikembalikan ke default.', 'success');
-    }
+    setShowResetConfirm(true);
+  };
+
+  const doResetToDefaults = () => {
+    setIpList(DEFAULT_UMS_SUBNETS);
+    setShowResetConfirm(false);
+    onShowToast?.('Daftar subnet dikembalikan ke default.', 'success');
   };
 
   const handleSaveSettings = async () => {
@@ -195,6 +200,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ onSh
   }
 
   return (
+    <>
     <div className="animated-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 24, width: '100%' }}>
       {/* 1. Header Banner & Diagnostics */}
       <div className="card" style={{ padding: '20px 24px' }}>
@@ -661,5 +667,16 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ onSh
         </button>
       </div>
     </div>
+    <ConfirmModal
+      isOpen={showResetConfirm}
+      title="Reset ke Konfigurasi Default?"
+      message="Daftar subnet UMS akan dikembalikan ke konfigurasi standar (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, localhost). Perubahan yang belum disimpan akan hilang."
+      confirmText="Ya, Reset"
+      cancelText="Batal"
+      confirmVariant="warning"
+      onConfirm={doResetToDefaults}
+      onClose={() => setShowResetConfirm(false)}
+    />
+    </>
   );
 };

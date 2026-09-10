@@ -349,10 +349,32 @@ export const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Theme toggle bar positioned directly above the footer */}
+      {/* Theme toggle bar + scroll to top, positioned directly above the footer */}
       <div className="theme-toggle-container">
         <ThemeToggle />
+        <button
+          type="button"
+          className="theme-toggle-btn"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          title="Kembali ke Atas"
+          aria-label="Kembali ke Atas"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="18 15 12 9 6 15" />
+          </svg>
+        </button>
       </div>
+
 
       <footer
         style={{
@@ -368,7 +390,7 @@ export const App: React.FC = () => {
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
           &copy; {new Date().getFullYear()} UPT Perpustakaan dan Layanan Digital Universitas Muhammadiyah Surakarta
           <br />
-          Sistem Repositori Khusus Naskah Unpublish & Berkas Terbatas
+          Developed by IT UMS Library
         </div>
       </footer>
 

@@ -84,7 +84,14 @@ export const Header: React.FC<HeaderProps> = ({
             className="brand-logo-img brand-logo-dark"
           />
           <div>
-            <h1 className="brand-title">UPT Perpustakaan dan Layanan Digital UMS</h1>
+            <h1 style={{
+              fontSize: 16,
+              fontWeight: 800,
+              color: 'var(--color-text)',
+              letterSpacing: '-0.01em',
+              fontFamily: 'var(--font-heading)',
+              margin: 0,
+            }}>UPT Perpustakaan dan Layanan Digital UMS</h1>
             <p className="brand-subtitle">Portal Repositori E-Prints — Layanan Karya Ilmiah & Akses Khusus</p>
           </div>
         </div>
@@ -102,11 +109,10 @@ export const Header: React.FC<HeaderProps> = ({
                 backgroundColor: networkStatus.isUmsNetwork
                   ? 'rgba(16, 185, 129, 0.12)'
                   : 'rgba(100, 116, 139, 0.12)',
-                border: `1px solid ${
-                  networkStatus.isUmsNetwork
-                    ? 'rgba(16, 185, 129, 0.3)'
-                    : 'rgba(100, 116, 139, 0.25)'
-                }`,
+                border: `1px solid ${networkStatus.isUmsNetwork
+                  ? 'rgba(16, 185, 129, 0.3)'
+                  : 'rgba(100, 116, 139, 0.25)'
+                  }`,
                 color: networkStatus.isUmsNetwork ? '#10b981' : 'var(--color-text-muted)',
                 fontSize: 12,
                 fontWeight: 600,
@@ -126,8 +132,8 @@ export const Header: React.FC<HeaderProps> = ({
                 {networkStatus.isUmsNetwork
                   ? 'Wi-Fi / Jaringan UMS'
                   : networkStatus.accessMode === 'UMS_NETWORK_ONLY'
-                  ? 'Luar Kampus (Terkunci)'
-                  : 'Luar Kampus (Perlu Token)'}
+                    ? 'Luar Kampus (Terkunci)'
+                    : 'Luar Kampus (Perlu Token)'}
               </span>
             </div>
           )}

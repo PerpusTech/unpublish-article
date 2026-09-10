@@ -341,10 +341,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ onBackToPatron }) => {
       >
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <span className="brand-logo-badge" style={{ fontSize: 10, padding: '2px 7px' }}>
-              MEJA LAYANAN
-            </span>
-            <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>UPT Perpustakaan dan Layanan Digital UMS</span>
+
+            <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Halaman Admin</span>
           </div>
           <h1
             style={{

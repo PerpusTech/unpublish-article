@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { adminApi, DatabaseStats } from '../../services/api';
 import { copyToClipboard } from '../../utils/clipboard';
+import { ConfirmModal } from '../common/ConfirmModal';
 
 interface DatabaseBackupViewProps {
   onShowToast?: (message: string, type?: 'success' | 'danger') => void;
@@ -13,6 +14,7 @@ export const DatabaseBackupView: React.FC<DatabaseBackupViewProps> = ({ onShowTo
   const [exportingJson, setExportingJson] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
   const [copiedPath, setCopiedPath] = useState(false);
+  const [showOptimizeConfirm, setShowOptimizeConfirm] = useState(false);
 
   const fetchStats = async () => {
     setLoading(true);
@@ -59,7 +61,7 @@ export const DatabaseBackupView: React.FC<DatabaseBackupViewProps> = ({ onShowTo
   };
 
   const handleOptimize = async () => {
-    if (!confirm('Jalankan proses VACUUM dan optimasi database SQLite sekarang?')) return;
+    setShowOptimizeConfirm(false);
     setOptimizing(true);
     try {
       const res = await adminApi.optimizeDatabase();
@@ -436,7 +438,7 @@ export const DatabaseBackupView: React.FC<DatabaseBackupViewProps> = ({ onShowTo
             <button
               type="button"
               className="btn btn-outline"
-              onClick={handleOptimize}
+              onClick={() => setShowOptimizeConfirm(true)}
               disabled={optimizing || loading}
               style={{
                 width: '100%',
@@ -492,6 +494,18 @@ export const DatabaseBackupView: React.FC<DatabaseBackupViewProps> = ({ onShowTo
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={showOptimizeConfirm}
+        title="Jalankan Optimasi Database?"
+        message="Proses VACUUM SQLite akan dijalankan sekarang. Operasi ini aman namun membutuhkan beberapa detik. Lanjutkan?"
+        confirmText="Ya, Optimasi"
+        cancelText="Batal"
+        confirmVariant="warning"
+        isLoading={optimizing}
+        onConfirm={handleOptimize}
+        onClose={() => setShowOptimizeConfirm(false)}
+      />
     </div>
   );
 };

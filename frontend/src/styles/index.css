@@ -76,10 +76,10 @@
 
 /* Dark Mode Theme Tokens (True Neutral Dark / Jet Black) */
 [data-theme="dark"] {
-  --color-primary: #3b82f6;
-  /* Bright Academic Blue */
-  --color-primary-hover: #60a5fa;
-  --color-primary-light: #18181b;
+  --color-primary: #2563eb;
+  /* Deep Blue */
+  --color-primary-hover: #3b82f6;
+  --color-primary-light: #0f1c35;
   --color-accent: #f59e0b;
   --color-accent-light: #241a0e;
   --color-accent-border: #52350a;
@@ -1003,7 +1003,7 @@ a:hover {
   border-top: 1px solid var(--color-border);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 10px;
   background-color: var(--color-surface-subtle);
 }
@@ -1139,10 +1139,12 @@ a:hover {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  z-index: 9995;
+  z-index: 999;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   pointer-events: auto;
 }
 
