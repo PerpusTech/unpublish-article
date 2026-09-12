@@ -92,13 +92,14 @@ export const IntranetCheckinModal: React.FC<IntranetCheckinModalProps> = ({
     <div className="modal-backdrop">
       <div className="modal-dialog" style={{ maxWidth: 500 }}>
         <div className="modal-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div
               style={{
-                width: 38,
-                height: 38,
+                width: 44,
+                height: 44,
                 borderRadius: '50%',
-                background: 'rgba(56, 189, 248, 0.15)',
+                background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(99, 102, 241, 0.15) 100%)',
+                border: '1.5px solid rgba(56, 189, 248, 0.3)',
                 color: '#38bdf8',
                 display: 'flex',
                 alignItems: 'center',
@@ -106,18 +107,35 @@ export const IntranetCheckinModal: React.FC<IntranetCheckinModalProps> = ({
                 flexShrink: 0,
               }}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                 <circle cx="12" cy="7" r="4" />
               </svg>
             </div>
             <div>
-              <h2 className="modal-title" style={{ fontSize: '1.15rem', marginBottom: 2 }}>
+              <h2 className="modal-title" style={{ fontSize: '1.05rem', marginBottom: 4, fontWeight: 700 }}>
                 Identifikasi Pemustaka UMS
               </h2>
-              <span className="badge badge-success" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
-                Terhubung Jaringan Kampus UMS
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    border: '1px solid rgba(16, 185, 129, 0.2)',
+                    borderRadius: 20,
+                    padding: '2px 8px',
+                    letterSpacing: '0.02em',
+                  }}
+                >
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
+                  Terhubung · Jaringan Kampus UMS
+                </span>
+              </div>
             </div>
           </div>
           <button

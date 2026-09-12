@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { adminApi, DatabaseStats } from '../../services/api';
 import { copyToClipboard } from '../../utils/clipboard';
-import { ConfirmModal } from '../common/ConfirmModal';
+import { Button, Card, StatCard, ConfirmModal } from '../common';
 
 interface DatabaseBackupViewProps {
   onShowToast?: (message: string, type?: 'success' | 'danger') => void;
@@ -149,184 +149,136 @@ export const DatabaseBackupView: React.FC<DatabaseBackupViewProps> = ({ onShowTo
 
         {/* Action Buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            className="btn"
+          <Button
+            variant="primary"
             onClick={handleDownloadBackup}
-            disabled={downloadingDb || loading}
+            isLoading={downloadingDb}
+            loadingText="Membuat Snapshot..."
+            disabled={loading}
             style={{
               backgroundColor: '#0284c7',
-              color: '#ffffff',
-              border: 'none',
-              fontWeight: 700,
-              fontSize: 13,
-              padding: '10px 18px',
-              borderRadius: 8,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              cursor: 'pointer',
+              borderColor: '#0284c7',
               boxShadow: '0 2px 8px rgba(2, 132, 199, 0.35)',
-              transition: 'all 0.15s ease',
+              padding: '10px 18px',
+              fontWeight: 700,
             }}
+            leftIcon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+            }
           >
-            {downloadingDb ? (
-              <>
-                <span className="spinner-border spinner-border-sm" />
-                <span>Membuat Snapshot...</span>
-              </>
-            ) : (
-              <>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-                <span>Unduh Backup (.sqlite)</span>
-              </>
-            )}
-          </button>
+            Unduh Backup (.sqlite)
+          </Button>
 
-          <button
-            type="button"
-            className="btn"
+          <Button
+            variant="outline"
             onClick={handleExportJson}
-            disabled={exportingJson || loading}
+            isLoading={exportingJson}
+            loadingText="Mengekspor..."
+            disabled={loading}
             style={{
               backgroundColor: 'rgba(255, 255, 255, 0.1)',
               color: '#f8fafc',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              fontWeight: 600,
-              fontSize: 13,
-              padding: '10px 16px',
-              borderRadius: 8,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              cursor: 'pointer',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
               backdropFilter: 'blur(4px)',
+              padding: '10px 16px',
             }}
+            leftIcon={
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+                <polyline points="10 9 9 9 8 9" />
+              </svg>
+            }
           >
-            {exportingJson ? (
-              <>
-                <span className="spinner-border spinner-border-sm" />
-                <span>Mengekspor...</span>
-              </>
-            ) : (
-              <>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="16" y1="13" x2="8" y2="13" />
-                  <line x1="16" y1="17" x2="8" y2="17" />
-                  <polyline points="10 9 9 9 8 9" />
-                </svg>
-                <span>Export JSON Dump</span>
-              </>
-            )}
-          </button>
+            Export JSON Dump
+          </Button>
         </div>
       </div>
 
-      {/* KPI Stats Cards (Editorial Minimalist) */}
+      {/* KPI Stats Cards */}
       <div className="stat-card-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
-        <div className="admin-metric-card">
-          <div className="admin-metric-header-row">
-            <span className="admin-metric-label">Ukuran Berkas DB</span>
-            <div className="admin-metric-icon-wrap">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-              </svg>
-            </div>
-          </div>
-          <div>
-            <div className="admin-metric-number">
-              {stats ? stats.sizeFormatted : '...'}
-            </div>
-            <div className="admin-metric-subtext">SQLite Single File Storage</div>
-          </div>
-        </div>
+        <StatCard
+          label="Ukuran Berkas DB"
+          value={stats ? stats.sizeFormatted : '...'}
+          description="SQLite Single File Storage"
+          color="blue"
+          icon={
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+          }
+        />
 
-        <div className="admin-metric-card">
-          <div className="admin-metric-header-row">
-            <span className="admin-metric-label">Total Record Tabel</span>
-            <div className="admin-metric-icon-wrap">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <line x1="3" y1="9" x2="21" y2="9" />
-                <line x1="3" y1="15" x2="21" y2="15" />
-                <line x1="9" y1="3" x2="9" y2="21" />
-                <line x1="15" y1="3" x2="15" y2="21" />
-              </svg>
-            </div>
-          </div>
-          <div>
-            <div className="admin-metric-number">
-              {stats ? stats.totalRecords.toLocaleString('id-ID') : '...'}
-            </div>
-            <div className="admin-metric-subtext">Akumulasi seluruh tabel lokal</div>
-          </div>
-        </div>
+        <StatCard
+          label="Total Record Tabel"
+          value={stats ? stats.totalRecords.toLocaleString('id-ID') : '...'}
+          description="Akumulasi seluruh tabel lokal"
+          color="purple"
+          icon={
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <line x1="3" y1="9" x2="21" y2="9" />
+              <line x1="3" y1="15" x2="21" y2="15" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+              <line x1="15" y1="3" x2="15" y2="21" />
+            </svg>
+          }
+        />
 
-        <div className="admin-metric-card">
-          <div className="admin-metric-header-row">
-            <span className="admin-metric-label">Integritas & Mode</span>
-            <div className="admin-metric-icon-wrap">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
-            </div>
-          </div>
-          <div>
-            <div className="admin-metric-number" style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#16a34a' }}>
-              <span style={{ fontSize: 24 }}>{stats?.integrity === 'OK' || stats?.integrity === 'ok' ? 'OK (Sehat)' : stats?.integrity || 'OK'}</span>
-            </div>
-            <div className="admin-metric-subtext">Journal: {stats?.journalMode || 'WAL'} (Concurrency High)</div>
-          </div>
-        </div>
+        <StatCard
+          label="Integritas & Mode"
+          value={stats?.integrity === 'OK' || stats?.integrity === 'ok' ? 'OK (Sehat)' : stats?.integrity || 'OK'}
+          description={`Journal: ${stats?.journalMode || 'WAL'} (Concurrency High)`}
+          color="green"
+          icon={
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+          }
+        />
 
-        <div className="admin-metric-card">
-          <div className="admin-metric-header-row">
-            <span className="admin-metric-label">Alokasi Halaman</span>
-            <div className="admin-metric-icon-wrap">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="4" width="20" height="16" rx="2" />
-                <path d="M10 4v16" />
-              </svg>
-            </div>
-          </div>
-          <div>
-            <div className="admin-metric-number">
-              {stats ? `${stats.pageCount} Hal` : '...'}
-            </div>
-            <div className="admin-metric-subtext">Ukuran per Halaman: {stats ? `${stats.pageSize} Bytes` : '...'}</div>
-          </div>
-        </div>
+        <StatCard
+          label="Alokasi Halaman"
+          value={stats ? `${stats.pageCount} Hal` : '...'}
+          description={`Ukuran per Halaman: ${stats ? `${stats.pageSize} Bytes` : '...'}`}
+          color="amber"
+          icon={
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="2" />
+              <path d="M10 4v16" />
+            </svg>
+          }
+        />
       </div>
 
       {/* Database Details & Table Breakdown */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: 24, alignItems: 'start' }}>
         {/* Left Column: Tables Metadata */}
-        <div className="card" style={{ padding: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>
-              Rincian Tabel Database Lokal
-            </h3>
-            <button
-              type="button"
-              className="btn btn-outline"
+        <Card
+          title="Rincian Tabel Database Lokal"
+          action={
+            <Button
+              variant="outline"
+              size="sm"
               onClick={fetchStats}
               disabled={loading}
-              style={{ fontSize: 12, padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              leftIcon={
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="23 4 23 10 17 10" />
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+              }
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="23 4 23 10 17 10" />
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-              </svg>
-              <span>Segarkan</span>
-            </button>
-          </div>
-
+              Segarkan
+            </Button>
+          }
+        >
           <div style={{ overflowX: 'auto' }}>
             <table className="token-table" style={{ width: '100%', fontSize: 13 }}>
               <thead>
@@ -396,21 +348,20 @@ export const DatabaseBackupView: React.FC<DatabaseBackupViewProps> = ({ onShowTo
                 {stats?.databasePath || 'Memuat...'}
               </code>
             </div>
-            <button
-              type="button"
-              className="btn btn-outline"
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleCopyPath}
-              style={{ fontSize: 12, padding: '5px 10px', flexShrink: 0 }}
             >
               {copiedPath ? 'Tersalin!' : 'Salin Path'}
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
 
         {/* Right Column: Maintenance & Recovery Info */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Optimization Box */}
-          <div className="card" style={{ padding: 24 }}>
+          <Card padding="md">
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <span
                 style={{
@@ -435,47 +386,32 @@ export const DatabaseBackupView: React.FC<DatabaseBackupViewProps> = ({ onShowTo
             <p style={{ margin: '0 0 16px 0', fontSize: 12.5, color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
               Jalankan perintah defragmentasi internal SQLite untuk membersihkan halaman memori yang tidak terpakai, memperkecil ukuran file di disk, dan mempercepat respons kueri analitik.
             </p>
-            <button
-              type="button"
-              className="btn btn-outline"
+            <Button
+              variant="outline"
+              fullWidth
               onClick={() => setShowOptimizeConfirm(true)}
-              disabled={optimizing || loading}
-              style={{
-                width: '100%',
-                fontWeight: 600,
-                fontSize: 13,
-                padding: '9px 14px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-              }}
+              isLoading={optimizing}
+              loadingText="Mengoptimasi Database..."
+              disabled={loading}
+              leftIcon={
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2v4" />
+                  <path d="M12 18v4" />
+                  <path d="M4.93 4.93l2.83 2.83" />
+                  <path d="M16.24 16.24l2.83 2.83" />
+                  <path d="M2 12h4" />
+                  <path d="M18 12h4" />
+                  <path d="M4.93 19.07l2.83-2.83" />
+                  <path d="M16.24 7.76l2.83-2.83" />
+                </svg>
+              }
             >
-              {optimizing ? (
-                <>
-                  <span className="spinner-border spinner-border-sm" />
-                  <span>Mengoptimasi Database...</span>
-                </>
-              ) : (
-                <>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2v4" />
-                    <path d="M12 18v4" />
-                    <path d="M4.93 4.93l2.83 2.83" />
-                    <path d="M16.24 16.24l2.83 2.83" />
-                    <path d="M2 12h4" />
-                    <path d="M18 12h4" />
-                    <path d="M4.93 19.07l2.83-2.83" />
-                    <path d="M16.24 7.76l2.83-2.83" />
-                  </svg>
-                  <span>Jalankan VACUUM & Defrag Sekarang</span>
-                </>
-              )}
-            </button>
-          </div>
+              Jalankan VACUUM & Defrag Sekarang
+            </Button>
+          </Card>
 
           {/* Disaster Recovery Guide Card */}
-          <div className="card" style={{ padding: 24, backgroundColor: 'var(--color-surface-subtle)' }}>
+          <Card variant="subtle" padding="md">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
@@ -491,7 +427,7 @@ export const DatabaseBackupView: React.FC<DatabaseBackupViewProps> = ({ onShowTo
               <li>Untuk memulihkan di server baru / kontainer Docker lain, ganti file <code>backend/data/app.db</code> dengan file backup yang telah diunduh, lalu jalankan restart kontainer backend.</li>
               <li>Data audit log dan tiket lama akan langsung terbaca otomatis tanpa migrasi manual.</li>
             </ul>
-          </div>
+          </Card>
         </div>
       </div>
 
