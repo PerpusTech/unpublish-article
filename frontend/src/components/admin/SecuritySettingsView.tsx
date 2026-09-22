@@ -536,8 +536,12 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ onSh
 
         {/* 4. Real-time IP Diagnostic Simulator */}
         <Card variant="subtle" padding="md">
-          <h4 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 10px', color: 'var(--color-text)' }}>
-            🔍 Simulator Pengujian IP
+          <h4 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 10px', color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-primary)' }}>
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <span>Simulator Pengujian IP</span>
           </h4>
           <p style={{ fontSize: 12.5, color: 'var(--color-text-muted)', margin: '0 0 12px' }}>
             Uji alamat IP tertentu untuk memeriksa apakah IP tersebut diizinkan sebagai Jaringan UMS di bawah konfigurasi saat ini.
@@ -585,7 +589,17 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ onSh
                 gap: 8,
               }}
             >
-              <strong>{testResult.isInUms ? '✓ DISETUJUI:' : '✕ DITOLAK:'}</strong>
+              {testResult.isInUms ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              )}
+              <strong>{testResult.isInUms ? 'DISETUJUI:' : 'DITOLAK:'}</strong>
               <span>
                 IP <code style={{ color: 'inherit' }}>{testIpInput}</code>{' '}
                 {testResult.isInUms

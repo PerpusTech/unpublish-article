@@ -29,21 +29,24 @@ export class AuditController {
     }
   }
 
-  public static async exportCsv(req: Request, res: Response): Promise<void> {
+  public static async exportExcel(req: Request, res: Response): Promise<void> {
     const search = req.query.search as string;
 
     try {
-      const csv = await AuditService.exportCsv(search);
-      const filename = `audit-log-ums-library-${new Date().toISOString().slice(0, 10)}.csv`;
+      const buffer = await AuditService.exportExcel(search);
+      const filename = `audit-log-ums-library-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.send(csv);
+      res.send(buffer);
     } catch (err: any) {
       res.status(500).json({
         error: {
           code: 'INTERNAL_ERROR',
-          message: err.message || 'Gagal mengekspor CSV.'
+          message: err.message || 'Gagal mengekspor data Excel.'
         }
       });
     }

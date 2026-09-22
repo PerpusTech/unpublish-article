@@ -48,6 +48,9 @@ export interface TokenAdminItem {
   patron_name: string;
   patron_nim: string;
   duration_minutes: number;
+  claim_window_minutes?: number;
+  claim_expires_at?: string;
+  claim_remaining_seconds?: number;
   status: 'PENDING' | 'ACTIVE' | 'EXPIRED' | 'EXPIRED_UNCLAIMED' | 'REVOKED';
   created_at: string;
   claimed_at?: string;
@@ -192,30 +195,35 @@ export const api = {
   },
 
   async getSessionStatus(): Promise<{ isActive: boolean; session?: PatronSession; reason?: string }> {
-    try {
-      const storedTokenId = localStorage.getItem('ums_patron_token_id') || '';
-      const qs = new URLSearchParams();
-      if (storedTokenId) qs.append('token_id', storedTokenId);
-
-      const res = await fetch(`${API_BASE}/patron/session/status?${qs.toString()}`, {
-        headers: {
-          'x-client-uuid': getClientUuid(),
-          ...(storedTokenId ? { 'x-patron-token-id': storedTokenId } : {})
-        },
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (data.isActive && data.session) {
-        localStorage.setItem('ums_patron_session', JSON.stringify(data.session));
-        localStorage.setItem('ums_patron_token_id', data.session.id);
-      } else {
-        localStorage.removeItem('ums_patron_session');
-        localStorage.removeItem('ums_patron_token_id');
-      }
-      return data;
-    } catch {
+    const storedTokenId = localStorage.getItem('ums_patron_token_id') || '';
+    if (!storedTokenId) {
       return { isActive: false };
     }
+
+    const qs = new URLSearchParams();
+    qs.append('token_id', storedTokenId);
+
+    const res = await fetch(`${API_BASE}/patron/session/status?${qs.toString()}`, {
+      headers: {
+        'x-client-uuid': getClientUuid(),
+        'x-patron-token-id': storedTokenId,
+      },
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      throw new Error(`Gagal memverifikasi status sesi (HTTP ${res.status})`);
+    }
+
+    const data = await res.json();
+    if (data.isActive && data.session) {
+      localStorage.setItem('ums_patron_session', JSON.stringify(data.session));
+      localStorage.setItem('ums_patron_token_id', data.session.id);
+    } else if (data.isActive === false && data.reason) {
+      localStorage.removeItem('ums_patron_session');
+      localStorage.removeItem('ums_patron_token_id');
+    }
+    return data;
   },
 
   async logoutPatron(sessionData?: { tokenId?: string; patronNim?: string; patronName?: string }): Promise<void> {
@@ -446,6 +454,7 @@ export const api = {
     patronName: string;
     patronNim: string;
     durationMinutes: number;
+    claimWindowMinutes?: number;
     notes?: string;
   }): Promise<{ token: TokenAdminItem; qrDataUrl: string }> {
     const res = await fetch(`${API_BASE}/admin/tokens`, {
@@ -462,6 +471,7 @@ export const api = {
   async createBatchTokens(data: {
     items: { patronName: string; patronNim: string; notes?: string }[];
     durationMinutes: number;
+    claimWindowMinutes?: number;
     defaultNotes?: string;
   }): Promise<{ success: boolean; message: string; tokens: { token: TokenAdminItem; qrDataUrl: string }[]; count: number }> {
     const res = await fetch(`${API_BASE}/admin/tokens/batch`, {
@@ -693,17 +703,63 @@ export const api = {
     return json;
   },
 
-  // === Analytics ===
-  async getAnalytics(period?: string): Promise<AnalyticsData> {
+  // === Analytics & Usage Reports ===
+  async getAnalytics(params?: AnalyticsFilterParams): Promise<AnalyticsResponse> {
     const qs = new URLSearchParams();
-    if (period) qs.append('period', period);
+    if (params) {
+      if (params.periodType) qs.append('periodType', params.periodType);
+      if (params.date) qs.append('date', params.date);
+      if (params.month !== undefined) qs.append('month', String(params.month));
+      if (params.year !== undefined) qs.append('year', String(params.year));
+      if (params.startDate) qs.append('startDate', params.startDate);
+      if (params.endDate) qs.append('endDate', params.endDate);
+    }
     const res = await fetch(`${API_BASE}/admin/analytics?${qs.toString()}`, {
       credentials: 'include',
       headers: getAdminHeaders(),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error?.message || 'Gagal memuat data analitik');
-    return json.data || json;
+    return json;
+  },
+
+  async exportBatchTokensExcel(items: any[]): Promise<Blob> {
+    const res = await fetch(`${API_BASE}/admin/tokens/export-batch`, {
+      method: 'POST',
+      headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
+      body: JSON.stringify({ items }),
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(json.error?.message || 'Gagal mengekspor berkas Excel batch tiket');
+    }
+    return await res.blob();
+  },
+
+  async exportAnalyticsExcel(params?: AnalyticsFilterParams): Promise<Blob> {
+    const qs = new URLSearchParams();
+    if (params) {
+      if (params.periodType) qs.append('periodType', params.periodType);
+      if (params.date) qs.append('date', params.date);
+      if (params.month !== undefined) qs.append('month', String(params.month));
+      if (params.year !== undefined) qs.append('year', String(params.year));
+      if (params.startDate) qs.append('startDate', params.startDate);
+      if (params.endDate) qs.append('endDate', params.endDate);
+    }
+    const res = await fetch(`${API_BASE}/admin/analytics/export-excel?${qs.toString()}`, {
+      credentials: 'include',
+      headers: getAdminHeaders(),
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(json.error?.message || 'Gagal mengekspor laporan Excel');
+    }
+    return await res.blob();
+  },
+
+  async exportAnalyticsCsv(params?: AnalyticsFilterParams): Promise<Blob> {
+    return this.exportAnalyticsExcel(params);
   },
 
   // === Security Incident Telemetry & Live Alerts ===
@@ -905,6 +961,31 @@ export interface DatabaseStats {
   totalRecords: number;
 }
 
+export interface AnalyticsFilterParams {
+  periodType?: 'daily' | 'monthly' | 'yearly' | 'custom' | 'all';
+  date?: string; // YYYY-MM-DD
+  month?: number; // 1-12
+  year?: number; // YYYY
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+}
+
+export interface AnalyticsPeriodInfo {
+  type: 'daily' | 'monthly' | 'yearly' | 'custom' | 'all';
+  label: string;
+  startDate: string;
+  endDate: string;
+  selectedDate?: string;
+  selectedMonth?: number;
+  selectedYear?: number;
+}
+
+export interface AnalyticsResponse {
+  success: boolean;
+  period: AnalyticsPeriodInfo;
+  data: AnalyticsData;
+}
+
 export interface AnalyticsData {
   kpis: {
     totalTokens: number;
@@ -943,6 +1024,7 @@ export interface AnalyticsData {
   }[];
   dailyTrend: {
     date: string;
+    label?: string;
     total_events: number;
     document_views: number;
     active_readers: number;

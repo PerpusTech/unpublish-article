@@ -359,14 +359,23 @@ export const ArticleDetailModal: React.FC<ArticleDetailModalProps> = ({
                   }
 
                   return (
-                    <span className="author-chip">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--color-text-muted)' }}>
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                        <circle cx="12" cy="7" r="4" />
+                    <span
+                      className="author-chip author-chip-empty"
+                      style={{
+                        fontStyle: 'italic',
+                        color: 'var(--color-text-muted)',
+                        backgroundColor: 'var(--color-surface-subtle)',
+                        borderColor: 'var(--color-border)',
+                      }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
                       </svg>
-                      <span className="author-chip-name">Civitas Akademika UMS</span>
+                      <span className="author-chip-name">Penulis belum dicantumkan pada metadata repositori</span>
                       {(currentArticle.id_number || currentArticle.nim) && (
-                        <span className="author-chip-nim" title="Nomor Identifikasi / NIM">
+                        <span className="author-chip-nim" title="Nomor Identifikasi / NIM Penulis">
                           ({currentArticle.id_number || currentArticle.nim})
                         </span>
                       )}

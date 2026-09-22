@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { query } from '../config/appDb';
 import { ENV } from '../config/env';
 import { CasService } from '../services/casService';
+import { generateStyledExcelBuffer } from '../utils/excelGenerator';
 
 export class UserController {
   /**
@@ -59,9 +60,9 @@ export class UserController {
   }
 
   /**
-   * Export users list as CSV
+   * Export users list as formatted Excel (.xlsx) with borders
    */
-  public static async exportCsv(req: Request, res: Response): Promise<void> {
+  public static async exportExcel(req: Request, res: Response): Promise<void> {
     try {
       const search = (req.query.search as string || '').trim();
       const role = (req.query.role as string || '').trim().toUpperCase();
@@ -79,36 +80,46 @@ export class UserController {
         params.push(role);
       }
 
-      const users = await query.all(
+      const users = await query.all<any>(
         `SELECT email, name, role, is_active, last_login_at, created_at FROM admin_users ${whereSql} ORDER BY created_at DESC`,
         params
       );
 
-      const headers = ['Nama Civitas', 'Email Resmi UMS', 'Hak Akses (Role)', 'Status Akun', 'Terakhir Login', 'Waktu Terdaftar'];
+      const columns = [
+        { header: 'Nama Civitas', key: 'name', width: 28, align: 'left' as const },
+        { header: 'Email Resmi UMS', key: 'email', width: 30, align: 'left' as const },
+        { header: 'Hak Akses (Role)', key: 'role', width: 18, align: 'center' as const },
+        { header: 'Status Akun', key: 'status_label', width: 14, align: 'center' as const },
+        { header: 'Terakhir Login', key: 'last_login_at', width: 22, align: 'center' as const },
+        { header: 'Waktu Terdaftar', key: 'created_at', width: 22, align: 'center' as const },
+      ];
 
-      const escapeCsv = (val: any) => {
-        if (val === null || val === undefined) return '""';
-        const str = String(val).replace(/"/g, '""');
-        return `"${str}"`;
-      };
+      const rows = users.map((u) => ({
+        name: u.name || '-',
+        email: u.email || '-',
+        role: u.role || '-',
+        status_label: u.is_active === 1 ? 'Aktif' : 'Nonaktif',
+        last_login_at: u.last_login_at || '-',
+        created_at: u.created_at || '-',
+      }));
 
-      const rows = users.map((u) => [
-        escapeCsv(u.name),
-        escapeCsv(u.email),
-        escapeCsv(u.role),
-        escapeCsv(u.is_active === 1 ? 'Aktif' : 'Nonaktif'),
-        escapeCsv(u.last_login_at || '-'),
-        escapeCsv(u.created_at || '-'),
-      ]);
+      const buffer = await generateStyledExcelBuffer({
+        sheetName: 'Daftar Pengguna',
+        columns,
+        rows,
+        headerBgColor: 'FF0F4C81',
+      });
 
-      const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-      const filename = `daftar-pengguna-ums-${new Date().toISOString().slice(0, 10)}.csv`;
+      const filename = `daftar-pengguna-ums-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.send(csv);
+      res.send(buffer);
     } catch (err: any) {
-      console.error('[UserController.exportCsv] Error:', err);
+      console.error('[UserController.exportExcel] Error:', err);
       res.status(500).json({ error: { code: 'DB_ERROR', message: 'Gagal mengekspor data pengguna.' } });
     }
   }

@@ -151,7 +151,7 @@ export const App: React.FC = () => {
         });
         localStorage.setItem('ums_patron_session', JSON.stringify(activeSession));
         localStorage.setItem('ums_patron_token_id', activeSession.id);
-      } else if (!res.isActive) {
+      } else if (!res.isActive && res.reason) {
         setSession((prev) => {
           if (prev) {
             setExpiredSession(prev);

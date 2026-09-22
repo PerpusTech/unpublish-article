@@ -199,6 +199,185 @@ html {
   background-color: var(--color-primary);
 }
 
+/* ==========================================================================
+   Form Controls & Button Design System (Select, Input, Date, Buttons)
+   ========================================================================== */
+
+/* Universal Form Controls: Input & Select */
+.form-control,
+.form-select,
+.form-input,
+select,
+input[type="text"],
+input[type="date"],
+input[type="datetime-local"],
+input[type="search"],
+input[type="number"],
+input[type="password"],
+input[type="email"] {
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 6px 12px;
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+  vertical-align: middle;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.form-control:hover,
+.form-select:hover,
+.form-input:hover,
+select:hover,
+input[type="date"]:hover {
+  border-color: var(--color-border-dark);
+  background-color: var(--color-surface-hover);
+}
+
+.form-control:focus,
+.form-select:focus,
+.form-input:focus,
+select:focus,
+input[type="date"]:focus {
+  border-color: var(--color-primary);
+  background-color: var(--color-surface);
+  box-shadow: 0 0 0 3px rgba(10, 37, 64, 0.12);
+}
+
+[data-theme="dark"] .form-control:focus,
+[data-theme="dark"] .form-select:focus,
+[data-theme="dark"] .form-input:focus,
+[data-theme="dark"] select:focus,
+[data-theme="dark"] input[type="date"]:focus {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+}
+
+/* Specific Select Styling with Custom Clean Chevron */
+.form-select,
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  padding-right: 30px !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 13px 13px;
+}
+
+[data-theme="dark"] .form-select,
+[data-theme="dark"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+}
+
+/* Small size variant for compact toolbars */
+.form-control-sm,
+.form-select-sm,
+.input-sm {
+  padding: 4px 10px !important;
+  font-size: 12.5px !important;
+  border-radius: 6px !important;
+  height: 32px;
+}
+
+.form-select-sm,
+select.form-control-sm {
+  padding-right: 26px !important;
+  background-position: right 7px center !important;
+}
+
+/* Date Input Styling */
+input[type="date"] {
+  cursor: pointer;
+  letter-spacing: -0.2px;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.65;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.9);
+}
+
+/* Button Component Utilities */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 7px 15px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  text-decoration: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-primary {
+  background-color: var(--color-primary);
+  color: #ffffff;
+  border-color: var(--color-primary);
+  box-shadow: 0 1px 3px rgba(10, 37, 64, 0.2);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(10, 37, 64, 0.25);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-border-dark);
+  color: var(--color-text);
+}
+
+.btn-sm {
+  padding: 4px 11px;
+  font-size: 12px;
+  border-radius: 6px;
+  height: 32px;
+}
+
 /* Input Range / Slider Components (input[type="range"]) */
 input[type="range"] {
   -webkit-appearance: none;
@@ -672,16 +851,20 @@ a:hover {
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
 }
 
 @keyframes pulseDot {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
     opacity: 1;
   }
+
   50% {
     transform: scale(1.35);
     opacity: 0.65;
@@ -697,6 +880,7 @@ a:hover {
     opacity: 0;
     transform: scale(0.96) translateY(-8px);
   }
+
   to {
     opacity: 1;
     transform: scale(1) translateY(0);
@@ -758,10 +942,9 @@ a:hover {
   display: inline-flex;
   align-items: center;
   padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
 }
@@ -964,7 +1147,8 @@ a:hover {
 }
 
 /* Tables (Academic Ledger) */
-.table-wrapper {
+.table-wrapper,
+.table-responsive {
   overflow-x: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -988,15 +1172,25 @@ a:hover {
   font-family: var(--font-heading);
   color: var(--color-text);
   border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
   white-space: nowrap;
   letter-spacing: 0.2px;
+}
+
+.data-table th:last-child {
+  border-right: none;
 }
 
 .data-table td {
   padding: 13px 16px;
   font-family: var(--font-sans);
   border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
   vertical-align: middle;
+}
+
+.data-table td:last-child {
+  border-right: none;
 }
 
 .data-table tr:last-child td {
@@ -1900,24 +2094,25 @@ a:hover {
 
 /* Quick Copy Code Pill */
 .copy-token-btn {
-  border: 1px dashed var(--color-border-dark);
+  border: 1px solid var(--color-border);
   background: var(--color-surface-subtle);
-  color: var(--color-primary);
-  padding: 3px 8px;
+  color: var(--color-text-muted);
+  padding: 2px 6px;
   border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  gap: 4px;
   transition: all 0.15s ease;
 }
 
 .copy-token-btn:hover {
   background: var(--color-surface-hover);
-  border-color: var(--color-primary);
+  border-color: var(--color-border-dark);
+  color: var(--color-primary);
 }
 
 /* ==========================================================================
@@ -2329,14 +2524,32 @@ a:hover {
 
   .printable-slip {
     display: block !important;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 auto !important;
+    padding: 15px !important;
+    width: 80mm !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Executive analytics printable report */
+  .printable-report-sheet,
+  .printable-report-sheet * {
+    visibility: visible !important;
+  }
+
+  .printable-report-sheet {
+    display: block !important;
     position: static !important;
     width: 100% !important;
-    max-width: 450px !important;
-    margin: 20px auto !important;
-    padding: 16px !important;
-    box-shadow: none !important;
+    max-width: 100% !important;
+    padding: 10mm 15mm !important;
     background: #ffffff !important;
     color: #000000 !important;
+    box-shadow: none !important;
   }
 }
 
@@ -3030,6 +3243,7 @@ a:hover {
     transform: translateY(-100%);
     opacity: 0;
   }
+
   to {
     transform: translateY(0);
     opacity: 1;
@@ -3050,9 +3264,12 @@ a:hover {
 }
 
 @keyframes criticalPulseBorder {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 4px 18px rgba(220, 38, 38, 0.15);
   }
+
   50% {
     box-shadow: 0 4px 22px rgba(220, 38, 38, 0.32);
   }
@@ -3191,6 +3408,7 @@ a:hover {
     transform: scale(0.8);
     opacity: 0;
   }
+
   to {
     transform: scale(1);
     opacity: 1;
@@ -3487,11 +3705,24 @@ a:hover {
 }
 
 @media print {
-  body * {
+
+  /* Suppress copyright warning when printing thermal slips, voucher slips, or official reports */
+  body:has(.thermal-receipt-printable)::after,
+  body:has(.printable-slip)::after,
+  body:has(.printable-report-sheet)::after,
+  body.printing-slip::after,
+  body.printing-report::after {
+    content: none !important;
+    display: none !important;
+  }
+
+  /* Only display the anti-print copyright warning when printing general protected documents (not slips/reports) */
+  body:not(:has(.thermal-receipt-printable)):not(:has(.printable-slip)):not(:has(.printable-report-sheet)):not(.printing-slip):not(.printing-report) * {
     display: none !important;
     visibility: hidden !important;
   }
-  body::after {
+
+  body:not(:has(.thermal-receipt-printable)):not(:has(.printable-slip)):not(:has(.printable-report-sheet)):not(.printing-slip):not(.printing-report)::after {
     content: "DOKUMEN DILINDUNGI HAK CIPTA UPT PERPUSTAKAAN UMS — PENCETAKAN DINONAKTIFKAN";
     display: block !important;
     font-size: 24pt;
@@ -3505,7 +3736,8 @@ a:hover {
    Search Query Text Highlighting
    ========================================================================== */
 .search-highlight-mark {
-  background-color: #fef08a !important; /* Soft warm amber-yellow */
+  background-color: #fef08a !important;
+  /* Soft warm amber-yellow */
   color: #0f172a !important;
   font-weight: 700;
   border-radius: 3px;

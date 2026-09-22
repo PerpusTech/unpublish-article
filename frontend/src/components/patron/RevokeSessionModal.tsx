@@ -99,7 +99,7 @@ export const RevokeSessionModal: React.FC<RevokeSessionModalProps> = ({
 
         <div className="modal-body">
           <div className="alert-box alert-warning" style={{ fontSize: '0.85rem', lineHeight: 1.5, marginBottom: 16 }}>
-            Apakah Anda yakin ingin <strong>mencabut identitas membaca</strong> dari peramban ini?
+            Apakah Anda yakin ingin <strong>mengakhiri sesi membaca</strong> dari peramban ini?
           </div>
 
           <div
@@ -127,7 +127,7 @@ export const RevokeSessionModal: React.FC<RevokeSessionModalProps> = ({
           </div>
 
           <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', lineHeight: 1.5, margin: 0 }}>
-            *Setelah dicabut, riwayat sesi di komputer ini akan dihapus bersih sehingga pengguna berikutnya tidak dapat membaca naskah dengan identitas & watermark Anda.
+            *Setelah sesi diakhiri, riwayat sesi di komputer ini akan dibersihkan sehingga pengguna berikutnya tidak dapat membaca naskah dengan identitas & watermark Anda.
           </p>
 
           {error && (
@@ -148,7 +148,7 @@ export const RevokeSessionModal: React.FC<RevokeSessionModalProps> = ({
             disabled={loading}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
-            {loading ? 'Mencabut...' : 'Ya, Cabut & Akhiri Sesi'}
+            {loading ? 'Mengakhiri...' : 'Ya, Akhiri Sesi'}
           </button>
         </div>
       </div>

@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import crypto from 'crypto';
 import { query } from '../config/appDb';
 import { AuditService } from './auditService';
+import { generateStyledExcelBuffer } from '../utils/excelGenerator';
 
 export interface TokenRecord {
   id: string;
@@ -10,6 +11,8 @@ export interface TokenRecord {
   patron_name: string;
   patron_nim: string;
   duration_minutes: number;
+  claim_window_minutes?: number;
+  claim_expires_at?: string;
   status: 'PENDING' | 'ACTIVE' | 'EXPIRED' | 'EXPIRED_UNCLAIMED' | 'REVOKED';
   device_fingerprint?: string;
   created_by_admin: string;
@@ -19,6 +22,7 @@ export interface TokenRecord {
   extended_minutes: number;
   notes?: string;
   remaining_seconds?: number;
+  claim_remaining_seconds?: number;
   incident_count?: number;
   last_incident_at?: string;
   last_incident_type?: string;
@@ -60,6 +64,7 @@ export class TokenService {
     patronName: string;
     patronNim: string;
     durationMinutes: number;
+    claimWindowMinutes?: number;
     createdByAdmin: string;
     notes?: string;
   }): Promise<{ token: TokenRecord; qrDataUrl: string }> {
@@ -73,17 +78,41 @@ export class TokenService {
       existing = await query.get('SELECT id FROM tokens WHERE token_code = ?', [tokenCode]);
     }
 
+    // Determine claim window and claim expiration timestamp
+    // claimWindowMinutes:
+    // - Positive number (e.g. 15, 30, 60, 120): X minutes from now
+    // - -1: Same-Day (until 23:59:59 today)
+    // - 0: Unlimited / 24 hours
+    // - Undefined: default to 30 minutes
+    const windowMinutes = params.claimWindowMinutes !== undefined ? params.claimWindowMinutes : 30;
+    let claimExpiresAt: string | null = null;
+    const now = new Date();
+
+    if (windowMinutes === -1) {
+      // End of current day (23:59:59.999)
+      const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      claimExpiresAt = endOfDay.toISOString();
+    } else if (windowMinutes > 0) {
+      claimExpiresAt = new Date(now.getTime() + windowMinutes * 60 * 1000).toISOString();
+    } else {
+      // 0 means no strict claim window (fallback 24h)
+      claimExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    }
+
     await query.run(
       `INSERT INTO tokens (
         id, token_code, patron_name, patron_nim, duration_minutes,
+        claim_window_minutes, claim_expires_at,
         status, created_by_admin, notes
-      ) VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)`,
       [
         id,
         tokenCode,
         params.patronName.trim(),
         params.patronNim.trim(),
         params.durationMinutes,
+        windowMinutes,
+        claimExpiresAt,
         params.createdByAdmin,
         params.notes || null,
       ]
@@ -110,6 +139,7 @@ export class TokenService {
   public static async createBatchTokens(params: {
     items: { patronName: string; patronNim: string; notes?: string }[];
     durationMinutes: number;
+    claimWindowMinutes?: number;
     createdByAdmin: string;
     defaultNotes?: string;
   }): Promise<{ tokens: { token: TokenRecord; qrDataUrl: string }[]; count: number }> {
@@ -125,6 +155,7 @@ export class TokenService {
         patronName: name,
         patronNim: nim,
         durationMinutes: params.durationMinutes,
+        claimWindowMinutes: params.claimWindowMinutes,
         createdByAdmin: params.createdByAdmin,
         notes: note || undefined,
       });
@@ -142,7 +173,12 @@ export class TokenService {
     tokenCode: string,
     fingerprint: string
   ): Promise<{ success: boolean; message: string; token?: TokenRecord }> {
-    const code = tokenCode.trim().toUpperCase();
+    // Normalize: remove all internal whitespace and auto-correct common prefix typos
+    let code = (tokenCode || '').trim().toUpperCase().replace(/\s+/g, '');
+    if (code.startsWith('SS0-')) {
+      code = code.replace(/^SS0-/, 'SSO-');
+    }
+
     const token = await query.get<TokenRecord>(
       'SELECT * FROM tokens WHERE token_code = ?',
       [code]
@@ -154,7 +190,7 @@ export class TokenService {
 
     // Check if token was revoked
     if (token.status === 'REVOKED') {
-      return { success: false, message: 'Token ini telah dibatalkan/dicabut oleh pustakawan.' };
+      return { success: false, message: 'Izin token ini telah dibatalkan oleh pustakawan.' };
     }
 
     // Check if already active
@@ -183,16 +219,25 @@ export class TokenService {
       return { success: false, message: 'Token ini sudah kedaluwarsa.' };
     }
 
-    if (token.status !== 'PENDING') {
-      return { success: false, message: `Status token tidak valid: ${token.status}` };
-    }
-
-    // Check unclaimed expiration (24 hours)
-    const createdAt = new Date(token.created_at).getTime();
+    // Check unclaimed expiration (Claim Window Deadline)
     const nowTime = new Date().getTime();
-    if (nowTime - createdAt > 24 * 60 * 60 * 1000) {
-      await query.run("UPDATE tokens SET status = 'EXPIRED_UNCLAIMED' WHERE id = ?", [token.id]);
-      return { success: false, message: 'Token hangus karena belum diaktivasi lebih dari 24 jam sejak diterbitkan.' };
+    if (token.claim_expires_at) {
+      const claimExpiresTime = new Date(token.claim_expires_at).getTime();
+      if (nowTime >= claimExpiresTime) {
+        await query.run("UPDATE tokens SET status = 'EXPIRED_UNCLAIMED' WHERE id = ?", [token.id]);
+        const expiryFormatted = new Date(token.claim_expires_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        return {
+          success: false,
+          message: `Masa berlaku klaim token ini telah berakhir pada pukul ${expiryFormatted} WIB (Batas klaim: ${token.claim_window_minutes || 30} menit). Silakan minta tiket baru kepada pustakawan di meja sirkulasi.`,
+        };
+      }
+    } else {
+      // Fallback: 24 hours
+      const createdAt = new Date(token.created_at).getTime();
+      if (nowTime - createdAt > 24 * 60 * 60 * 1000) {
+        await query.run("UPDATE tokens SET status = 'EXPIRED_UNCLAIMED' WHERE id = ?", [token.id]);
+        return { success: false, message: 'Token hangus karena belum diaktivasi lebih dari 24 jam sejak diterbitkan.' };
+      }
     }
 
     // Activate token now!
@@ -238,7 +283,7 @@ export class TokenService {
     }
 
     if (token.status === 'REVOKED') {
-      return { isValid: false, reason: 'Sesi telah dicabut oleh pustakawan.' };
+      return { isValid: false, reason: 'Izin sesi telah dibatalkan oleh pustakawan.' };
     }
 
     // Check device fingerprint with fallback allowances (proxy, iframe, header variations)
@@ -279,7 +324,7 @@ export class TokenService {
     }
 
     if (token.status === 'REVOKED') {
-      return { success: false, message: 'Tidak dapat memperpanjang token yang telah dicabut.' };
+      return { success: false, message: 'Tidak dapat memperpanjang token yang telah dibatalkan.' };
     }
 
     const now = new Date().getTime();
@@ -374,6 +419,14 @@ export class TokenService {
         if (t.remaining_seconds === 0) {
           t.status = 'EXPIRED';
         }
+      } else if (t.status === 'PENDING') {
+        if (t.claim_expires_at) {
+          const claimExp = new Date(t.claim_expires_at).getTime();
+          t.claim_remaining_seconds = Math.max(0, Math.floor((claimExp - now) / 1000));
+          if (t.claim_remaining_seconds === 0) {
+            t.status = 'EXPIRED_UNCLAIMED';
+          }
+        }
       }
       return t;
     });
@@ -388,9 +441,9 @@ export class TokenService {
   }
 
   /**
-   * Export tokens list as CSV
+   * Export tokens list as formatted Excel (.xlsx) with borders and styled headers
    */
-  public static async exportCsv(filter?: { status?: string; search?: string }): Promise<string> {
+  public static async exportExcel(filter?: { status?: string; search?: string }): Promise<Buffer> {
     let whereSql = ' WHERE 1=1';
     const params: any[] = [];
 
@@ -410,41 +463,87 @@ export class TokenService {
       params
     );
 
-    const headers = [
-      'Kode Token',
-      'Nama Pemustaka',
-      'NIM/NIP',
-      'Status',
-      'Durasi Awal (Menit)',
-      'Perpanjangan (Menit)',
-      'Diterbitkan Oleh',
-      'Waktu Diterbitkan',
-      'Waktu Klaim',
-      'Waktu Kedaluwarsa',
-      'Catatan',
-    ];
-
-    const escapeCsv = (val: any) => {
-      if (val === null || val === undefined) return '""';
-      const str = String(val).replace(/"/g, '""');
-      return `"${str}"`;
+    const formatStatusLabel = (st: string) => {
+      switch (st) {
+        case 'ACTIVE':
+          return 'Aktif';
+        case 'PENDING':
+          return 'Menunggu';
+        case 'EXPIRED_UNCLAIMED':
+          return 'Hangus';
+        case 'EXPIRED':
+          return 'Berakhir';
+        case 'REVOKED':
+          return 'Dibatalkan';
+        default:
+          return st;
+      }
     };
 
-    const rows = tokens.map((t) => [
-      escapeCsv(t.token_code),
-      escapeCsv(t.patron_name),
-      escapeCsv(t.patron_nim),
-      escapeCsv(t.status),
-      escapeCsv(t.duration_minutes),
-      escapeCsv(t.extended_minutes || 0),
-      escapeCsv(t.created_by_admin),
-      escapeCsv(t.created_at),
-      escapeCsv(t.claimed_at || '-'),
-      escapeCsv(t.expires_at || '-'),
-      escapeCsv(t.notes || '-'),
-    ]);
+    const columns = [
+      { header: 'Kode Token', key: 'token_code', width: 18, align: 'center' as const },
+      { header: 'Nama Pemustaka', key: 'patron_name', width: 26, align: 'left' as const },
+      { header: 'NIM/NIP', key: 'patron_nim', width: 16, align: 'center' as const },
+      { header: 'Status', key: 'status_label', width: 14, align: 'center' as const },
+      { header: 'Durasi Awal (Menit)', key: 'duration_minutes', width: 20, align: 'right' as const },
+      { header: 'Perpanjangan (Menit)', key: 'extended_minutes', width: 22, align: 'right' as const },
+      { header: 'Diterbitkan Oleh', key: 'created_by_admin', width: 20, align: 'left' as const },
+      { header: 'Waktu Diterbitkan', key: 'created_at', width: 22, align: 'center' as const },
+      { header: 'Waktu Klaim', key: 'claimed_at', width: 22, align: 'center' as const },
+      { header: 'Waktu Kedaluwarsa', key: 'expires_at', width: 22, align: 'center' as const },
+      { header: 'Catatan', key: 'notes', width: 30, align: 'left' as const },
+    ];
 
-    return [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const rows = tokens.map((t) => ({
+      token_code: t.token_code,
+      patron_name: t.patron_name || '-',
+      patron_nim: t.patron_nim || '-',
+      status_label: formatStatusLabel(t.status),
+      duration_minutes: t.duration_minutes,
+      extended_minutes: t.extended_minutes || 0,
+      created_by_admin: t.created_by_admin || 'System',
+      created_at: t.created_at || '-',
+      claimed_at: t.claimed_at || '-',
+      expires_at: t.expires_at || '-',
+      notes: t.notes || '-',
+    }));
+
+    return generateStyledExcelBuffer({
+      sheetName: 'Daftar Sesi Tiket',
+      columns,
+      rows,
+      headerBgColor: 'FF0F4C81', // UMS Navy Blue
+    });
+  }
+
+  /**
+   * Export batch generated tokens as formatted Excel (.xlsx) with borders
+   */
+  public static async exportBatchExcel(items: Array<{ token: TokenRecord }>, appOrigin: string): Promise<Buffer> {
+    const columns = [
+      { header: 'Kode Token', key: 'token_code', width: 18, align: 'center' as const },
+      { header: 'Nama Pemustaka', key: 'patron_name', width: 26, align: 'left' as const },
+      { header: 'NIM/NIP', key: 'patron_nim', width: 16, align: 'center' as const },
+      { header: 'Durasi (Menit)', key: 'duration_minutes', width: 16, align: 'right' as const },
+      { header: 'Catatan', key: 'notes', width: 28, align: 'left' as const },
+      { header: 'Tautan Akses Langsung', key: 'direct_link', width: 45, align: 'left' as const },
+    ];
+
+    const rows = items.map(({ token }) => ({
+      token_code: token.token_code,
+      patron_name: token.patron_name || '-',
+      patron_nim: token.patron_nim || '-',
+      duration_minutes: token.duration_minutes,
+      notes: token.notes || '-',
+      direct_link: `${appOrigin}/?claim_token=${token.token_code}`,
+    }));
+
+    return generateStyledExcelBuffer({
+      sheetName: 'Tiket Massal',
+      columns,
+      rows,
+      headerBgColor: 'FF0F4C81',
+    });
   }
 
   /**
@@ -528,4 +627,35 @@ export class TokenService {
       return [];
     }
   }
+
+  /**
+   * Periodic maintenance: automatically expire active and unclaimed tokens that exceeded deadlines
+   */
+  public static async cleanupExpiredTokens(): Promise<{ expiredActive: number; expiredUnclaimed: number }> {
+    try {
+      const nowIso = new Date().toISOString();
+      const nowMs = Date.now();
+
+      // 1. Expire active tokens
+      const activeExpired = await query.run(
+        `UPDATE tokens SET status = 'EXPIRED' WHERE status = 'ACTIVE' AND expires_at IS NOT NULL AND expires_at <= ?`,
+        [nowIso]
+      );
+
+      // 2. Expire unclaimed pending tokens past claim deadline
+      const unclaimedExpired = await query.run(
+        `UPDATE tokens SET status = 'EXPIRED_UNCLAIMED' WHERE status = 'PENDING' AND claim_expires_at IS NOT NULL AND claim_expires_at <= ?`,
+        [nowIso]
+      );
+
+      return {
+        expiredActive: activeExpired.changes || 0,
+        expiredUnclaimed: unclaimedExpired.changes || 0,
+      };
+    } catch (err) {
+      console.error('[TokenService] Error cleaning up expired tokens:', err);
+      return { expiredActive: 0, expiredUnclaimed: 0 };
+    }
+  }
 }
+

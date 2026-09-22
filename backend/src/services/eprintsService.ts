@@ -70,7 +70,9 @@ export class EPrintsService {
 
     // Helper for mock dataset filtering
     const filterMockDataset = (q: SearchQuery): EPrintItem[] => {
-      let filtered = [...MOCK_EPRINTS];
+      let filtered = [...MOCK_EPRINTS].filter(
+        (i) => i.title && i.title.trim().length > 0 && i.title.trim().toLowerCase() !== 'tanpa judul'
+      );
 
       // Filter by Status
       if (q.status === 'UNPUBLISH') {
@@ -169,7 +171,9 @@ export class EPrintsService {
 
     // LIVE MySQL EPrints Query (Read-Only)
     try {
-      let whereClauses = ['1=1'];
+      let whereClauses = [
+        "e.title IS NOT NULL AND TRIM(e.title) != '' AND LOWER(TRIM(e.title)) != 'tanpa judul'"
+      ];
       const params: any[] = [];
 
       if (query.status === 'UNPUBLISH') {
@@ -480,6 +484,7 @@ export class EPrintsService {
              WHERE date_year IS NOT NULL 
                AND date_year >= 1990 
                AND date_year <= YEAR(CURDATE()) + 1
+               AND title IS NOT NULL AND TRIM(title) != '' AND LOWER(TRIM(title)) != 'tanpa judul'
              GROUP BY date_year 
              ORDER BY date_year DESC`
           );
@@ -494,7 +499,8 @@ export class EPrintsService {
         case 'division': {
           let sql = `SELECT department as value, department as label, COUNT(*) as count 
                      FROM eprint 
-                     WHERE department IS NOT NULL AND TRIM(department) != ''`;
+                     WHERE department IS NOT NULL AND TRIM(department) != ''
+                       AND title IS NOT NULL AND TRIM(title) != '' AND LOWER(TRIM(title)) != 'tanpa judul'`;
           const params: any[] = [];
           if (searchQuery && searchQuery.trim()) {
             sql += ` AND department LIKE ?`;
@@ -516,6 +522,7 @@ export class EPrintsService {
             `SELECT type as value, type as label, COUNT(*) as count 
              FROM eprint 
              WHERE type IS NOT NULL AND TRIM(type) != '' 
+               AND title IS NOT NULL AND TRIM(title) != '' AND LOWER(TRIM(title)) != 'tanpa judul'
              GROUP BY type 
              ORDER BY count DESC`
           );
@@ -549,10 +556,12 @@ export class EPrintsService {
         case 'subject': {
           let sql = `SELECT s.subjects as value, sn.name_name as label, COUNT(*) as count 
                      FROM eprint_subjects s 
-                     JOIN subject_name_name sn ON s.subjects = sn.subjectid`;
+                     JOIN subject_name_name sn ON s.subjects = sn.subjectid
+                     JOIN eprint e ON s.eprintid = e.eprintid
+                     WHERE e.title IS NOT NULL AND TRIM(e.title) != '' AND LOWER(TRIM(e.title)) != 'tanpa judul'`;
           const params: any[] = [];
           if (searchQuery && searchQuery.trim()) {
-            sql += ` WHERE LOWER(sn.name_name) LIKE ? OR LOWER(s.subjects) LIKE ?`;
+            sql += ` AND (LOWER(sn.name_name) LIKE ? OR LOWER(s.subjects) LIKE ?)`;
             const term = `%${searchQuery.trim().toLowerCase()}%`;
             params.push(term, term);
           }
@@ -572,25 +581,29 @@ export class EPrintsService {
           const params: any[] = [];
 
           if (searchQuery && searchQuery.trim()) {
-            sql = `SELECT TRIM(CONCAT(IFNULL(creators_name_family, ''), ', ', IFNULL(creators_name_given, ''))) as label,
-                          TRIM(CONCAT(IFNULL(creators_name_family, ''), ', ', IFNULL(creators_name_given, ''))) as value,
-                          COUNT(DISTINCT eprintid) as count 
-                   FROM eprint_creators_name 
-                   WHERE LOWER(creators_name_family) LIKE ? 
-                      OR LOWER(creators_name_given) LIKE ?
-                      OR eprintid IN (SELECT eprintid FROM eprint WHERE LOWER(id_number) LIKE ? OR LOWER(nim) LIKE ?)
-                   GROUP BY creators_name_family, creators_name_given 
+            sql = `SELECT TRIM(CONCAT(IFNULL(c.creators_name_family, ''), ', ', IFNULL(c.creators_name_given, ''))) as label,
+                          TRIM(CONCAT(IFNULL(c.creators_name_family, ''), ', ', IFNULL(c.creators_name_given, ''))) as value,
+                          COUNT(DISTINCT c.eprintid) as count 
+                   FROM eprint_creators_name c
+                   JOIN eprint e ON c.eprintid = e.eprintid
+                   WHERE e.title IS NOT NULL AND TRIM(e.title) != '' AND LOWER(TRIM(e.title)) != 'tanpa judul'
+                     AND (LOWER(c.creators_name_family) LIKE ? 
+                          OR LOWER(c.creators_name_given) LIKE ?
+                          OR e.eprintid IN (SELECT e2.eprintid FROM eprint e2 WHERE LOWER(e2.id_number) LIKE ? OR LOWER(e2.nim) LIKE ?))
+                   GROUP BY c.creators_name_family, c.creators_name_given 
                    ORDER BY count DESC 
                    LIMIT 100`;
             const term = `%${searchQuery.trim().toLowerCase()}%`;
             params.push(term, term, term, term);
           } else {
-            sql = `SELECT TRIM(CONCAT(IFNULL(creators_name_family, ''), ', ', IFNULL(creators_name_given, ''))) as label,
-                          TRIM(CONCAT(IFNULL(creators_name_family, ''), ', ', IFNULL(creators_name_given, ''))) as value,
-                          COUNT(DISTINCT eprintid) as count 
-                   FROM eprint_creators_name 
-                   WHERE (creators_name_family IS NOT NULL AND TRIM(creators_name_family) != '')
-                   GROUP BY creators_name_family, creators_name_given 
+            sql = `SELECT TRIM(CONCAT(IFNULL(c.creators_name_family, ''), ', ', IFNULL(c.creators_name_given, ''))) as label,
+                          TRIM(CONCAT(IFNULL(c.creators_name_family, ''), ', ', IFNULL(c.creators_name_given, ''))) as value,
+                          COUNT(DISTINCT c.eprintid) as count 
+                   FROM eprint_creators_name c
+                   JOIN eprint e ON c.eprintid = e.eprintid
+                   WHERE e.title IS NOT NULL AND TRIM(e.title) != '' AND LOWER(TRIM(e.title)) != 'tanpa judul'
+                     AND (c.creators_name_family IS NOT NULL AND TRIM(c.creators_name_family) != '')
+                   GROUP BY c.creators_name_family, c.creators_name_given 
                    HAVING count >= 5 
                    ORDER BY count DESC 
                    LIMIT 150`;
@@ -619,7 +632,10 @@ export class EPrintsService {
 
   private static getMockBrowseItems(category: string, searchQuery?: string): BrowseItem[] {
     const counts = new Map<string, number>();
-    for (const item of MOCK_EPRINTS) {
+    const validEprints = MOCK_EPRINTS.filter(
+      (i) => i.title && i.title.trim().length > 0 && i.title.trim().toLowerCase() !== 'tanpa judul'
+    );
+    for (const item of validEprints) {
       let key = '';
       if (category === 'year') key = String(item.date_year);
       else if (category === 'division') key = item.department || 'Umum';
@@ -654,8 +670,11 @@ export class EPrintsService {
     }
 
     if (isMock || !mysqlPool) {
-      const totalArticles = MOCK_EPRINTS.length;
-      const unpublishArticles = MOCK_EPRINTS.filter((a) => a.eprint_status !== 'archive').length;
+      const validArticles = MOCK_EPRINTS.filter(
+        (i) => i.title && i.title.trim().length > 0 && i.title.trim().toLowerCase() !== 'tanpa judul'
+      );
+      const totalArticles = validArticles.length;
+      const unpublishArticles = validArticles.filter((a) => a.eprint_status !== 'archive').length;
       const publishArticles = totalArticles - unpublishArticles;
 
       return {
@@ -688,6 +707,7 @@ export class EPrintsService {
           SUM(CASE WHEN eprint_status IN ('buffer', 'inbox') THEN 1 ELSE 0 END) as unpublish,
           SUM(CASE WHEN eprint_status = 'archive' THEN 1 ELSE 0 END) as publish
         FROM eprint
+        WHERE title IS NOT NULL AND TRIM(title) != '' AND LOWER(TRIM(title)) != 'tanpa judul'
       `);
 
       const totalArticles = Number(counts[0]?.total || 0);

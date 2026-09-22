@@ -50,16 +50,19 @@ api.post('/auth/logout', AuthController.logout);
 api.post('/admin/tokens', requireAdminAuth, TokenController.createToken);
 api.post('/admin/tokens/batch', requireAdminAuth, TokenController.createBatchTokens);
 api.get('/admin/tokens', requireAdminAuth, TokenController.listTokens);
-api.get('/admin/tokens/export', requireAdminAuth, TokenController.exportCsv);
+api.get('/admin/tokens/export', requireAdminAuth, TokenController.exportExcel);
+api.post('/admin/tokens/export-batch', requireAdminAuth, TokenController.exportBatchExcel);
 api.post('/admin/tokens/:id/extend', requireAdminAuth, TokenController.extendToken);
 api.post('/admin/tokens/:id/revoke', requireAdminAuth, TokenController.revokeToken);
 api.delete('/admin/tokens/:id', requireAdminAuth, TokenController.deleteToken);
 
 api.get('/admin/audit-logs', requireAdminAuth, AuditController.listLogs);
-api.get('/admin/audit-logs/export', requireAdminAuth, AuditController.exportCsv);
+api.get('/admin/audit-logs/export', requireAdminAuth, AuditController.exportExcel);
 api.delete('/admin/audit-logs/:id', requireAdminAuth, AuditController.deleteLog);
 api.delete('/admin/audit-logs', requireAdminAuth, AuditController.deleteBulkLogs);
 api.get('/admin/analytics', requireAdminAuth, AnalyticsController.getAnalytics);
+api.get('/admin/analytics/export-excel', requireAdminAuth, AnalyticsController.exportAnalyticsExcel);
+api.get('/admin/analytics/export-csv', requireAdminAuth, AnalyticsController.exportAnalyticsExcel); // alias
 api.get('/admin/analytics/reading-heatmap-summary', requireAdminAuth, AnalyticsController.getReadingHeatmapSummary);
 api.get('/admin/analytics/reading-heatmap/:eprintId', requireAdminAuth, AnalyticsController.getReadingHeatmap);
 api.get('/admin/incidents/recent', requireAdminAuth, TokenController.getRecentIncidents);
@@ -77,7 +80,7 @@ api.put('/admin/settings/security', requireAdminAuth, SettingController.updateSe
 
 // ================= USER MANAGEMENT ROUTES =================
 api.get('/admin/users', requireAdminAuth, UserController.listUsers);
-api.get('/admin/users/export', requireAdminAuth, UserController.exportCsv);
+api.get('/admin/users/export', requireAdminAuth, UserController.exportExcel);
 api.post('/admin/users', requireAdminAuth, UserController.createUser);
 api.put('/admin/users/:email', requireAdminAuth, UserController.updateUser);
 api.delete('/admin/users/:email', requireAdminAuth, UserController.deleteUser);
@@ -109,13 +112,7 @@ app.use((req, res) => {
 // Periodic token expiration maintenance (every 60s)
 setInterval(async () => {
   try {
-    const { tokens: activeTokens } = await TokenService.listTokens({ status: 'ACTIVE', limit: 1000 });
-    const now = new Date().getTime();
-    for (const t of activeTokens) {
-      if (t.expires_at && now >= new Date(t.expires_at).getTime()) {
-        await TokenService.getSessionStatus(t.id, t.device_fingerprint || '');
-      }
-    }
+    await TokenService.cleanupExpiredTokens();
   } catch (err) {
     console.error('[Maintenance] Error running token cleaner:', err);
   }

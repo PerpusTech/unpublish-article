@@ -30,6 +30,7 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
   const [patronName, setPatronName] = useState('');
   const [patronNim, setPatronNim] = useState('');
   const [durationMinutes, setDurationMinutes] = useState(120);
+  const [claimWindowMinutes, setClaimWindowMinutes] = useState(30);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +51,7 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
   ]);
   const [batchDefaultNotes, setBatchDefaultNotes] = useState('');
   const [batchDuration, setBatchDuration] = useState(120);
+  const [batchClaimWindow, setBatchClaimWindow] = useState(30);
 
   // Batch Result
   const [batchGeneratedResults, setBatchGeneratedResults] = useState<ThermalSlipItem[] | null>(null);
@@ -132,6 +134,7 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
         patronName: patronName.trim(),
         patronNim: patronNim.trim().toUpperCase(),
         durationMinutes,
+        claimWindowMinutes,
         notes: notes.trim() || undefined,
       });
 
@@ -173,6 +176,7 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
       const res = await api.createBatchTokens({
         items: itemsToSubmit,
         durationMinutes: batchDuration,
+        claimWindowMinutes: batchClaimWindow,
         defaultNotes: batchDefaultNotes.trim() || undefined,
       });
 
@@ -247,29 +251,22 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
     setShareModalOpen(true);
   };
 
-  const handleExportBatchCsv = () => {
+  const handleExportBatchExcel = async () => {
     if (!batchGeneratedResults || batchGeneratedResults.length === 0) return;
-    const headers = ['Kode Token', 'Nama Pemustaka', 'NIM/NIP', 'Durasi (Menit)', 'Catatan', 'Tautan Akses Langsung'];
-    const origin = window.location.origin;
-    const rows = batchGeneratedResults.map(({ token }) => [
-      `"${token.token_code}"`,
-      `"${(token.patron_name || '').replace(/"/g, '""')}"`,
-      `"${(token.patron_nim || '').replace(/"/g, '""')}"`,
-      `"${token.duration_minutes}"`,
-      `"${(token.notes || '').replace(/"/g, '""')}"`,
-      `"${origin}/?claim_token=${token.token_code}"`,
-    ]);
-
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `batch_tiket_unpublish_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    try {
+      const blob = await api.exportBatchTokensExcel(batchGeneratedResults);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `batch_tiket_unpublish_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      if (onShowToast) onShowToast('Berkas Excel batch tiket berhasil diunduh.', 'success');
+    } catch (err: any) {
+      if (onShowToast) onShowToast(err.message || 'Gagal mengekspor berkas Excel.', 'danger');
+    }
   };
 
   const durationOptions = [
@@ -277,6 +274,15 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
     { value: 120, label: '2 Jam (Standar)', sub: '120 menit • Rekomendasi' },
     { value: 180, label: '3 Jam', sub: '180 menit' },
     { value: 240, label: '4 Jam', sub: '240 menit' },
+  ];
+
+  const claimWindowOptions = [
+    { value: 15, label: '15 Menit', sub: 'Super Ketat • Bilik Baca' },
+    { value: 30, label: '30 Menit (Standar)', sub: 'Rekomendasi Meja Admin' },
+    { value: 60, label: '1 Jam', sub: '60 Menit batas klaim' },
+    { value: 120, label: '2 Jam', sub: '120 Menit batas klaim' },
+    { value: -1, label: 'Hari Ini', sub: 'Sampai 23:59 WIB' },
+    { value: 0, label: '24 Jam', sub: 'Fleksibel (1 Hari)' },
   ];
 
   return createPortal(
@@ -454,8 +460,33 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
                       </div>
                     ))}
                   </div>
-                  <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 8, display: 'block', lineHeight: 1.4 }}>
+                  <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 6, display: 'block', lineHeight: 1.4 }}>
                     ℹ️ Hitungan mundur durasi membaca baru akan dimulai saat token pertama kali diaktivasi di komputer pemustaka.
+                  </span>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Batas Waktu Klaim Tiket *</span>
+                    <span style={{ fontSize: 11, color: 'var(--color-primary)', fontWeight: 700 }}>
+                      {claimWindowMinutes === -1 ? 'Hari Ini (s/d 23:59 WIB)' : claimWindowMinutes === 0 ? '24 Jam' : `${claimWindowMinutes} Menit`}
+                    </span>
+                  </label>
+                  <div className="duration-preset-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(135px, 1fr))' }}>
+                    {claimWindowOptions.map((opt) => (
+                      <div
+                        key={opt.value}
+                        className={`duration-chip ${claimWindowMinutes === opt.value ? 'selected' : ''}`}
+                        onClick={() => setClaimWindowMinutes(opt.value)}
+                        style={{ padding: '8px 10px' }}
+                      >
+                        <div className="duration-chip-title" style={{ fontSize: 12 }}>{opt.label}</div>
+                        <div className="duration-chip-desc" style={{ fontSize: 10.5 }}>{opt.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 6, display: 'block', lineHeight: 1.4 }}>
+                    ⏳ Jika token tidak diaktifkan sebelum batas waktu klaim, tiket otomatis hangus & tidak dapat digunakan.
                   </span>
                 </div>
 
@@ -590,8 +621,19 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
                       <strong>{generatedResult.token.duration_minutes} Menit</strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--color-text-muted)' }}>Masa Berlaku Klaim:</span>
-                      <span>24 Jam sejak diterbitkan</span>
+                      <span style={{ color: 'var(--color-text-muted)' }}>Batas Waktu Klaim:</span>
+                      <strong style={{ color: '#c2410c' }}>
+                        {generatedResult.token.claim_expires_at
+                          ? new Date(generatedResult.token.claim_expires_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) +
+                            ' WIB (' +
+                            (generatedResult.token.claim_window_minutes === -1
+                              ? 'Hari Ini'
+                              : generatedResult.token.claim_window_minutes === 0
+                              ? '24 Jam'
+                              : `${generatedResult.token.claim_window_minutes} Menit`) +
+                            ')'
+                          : '30 Menit sejak dibuat'}
+                      </strong>
                     </div>
                   </div>
                 </div>
@@ -772,9 +814,9 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
                   </div>
                 )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 12 }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" htmlFor="batch-duration-select">Durasi Seluruh Tiket *</label>
+                    <label className="form-label" htmlFor="batch-duration-select">Durasi Sesi *</label>
                     <select
                       id="batch-duration-select"
                       name="batch_duration"
@@ -791,13 +833,32 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
                   </div>
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" htmlFor="batch-default-notes-input">Catatan Kelompok / Mata Kuliah</label>
+                    <label className="form-label" htmlFor="batch-claim-window-select">Batas Waktu Klaim *</label>
+                    <select
+                      id="batch-claim-window-select"
+                      name="batch_claim_window"
+                      className="form-input"
+                      value={batchClaimWindow}
+                      onChange={(e) => setBatchClaimWindow(parseInt(e.target.value, 10))}
+                      style={{ fontWeight: 600 }}
+                    >
+                      <option value={15}>15 Menit (Super Ketat)</option>
+                      <option value={30}>30 Menit (Standar Meja)</option>
+                      <option value={60}>1 Jam (60 Menit)</option>
+                      <option value={120}>2 Jam (120 Menit)</option>
+                      <option value={-1}>Hari Ini (s/d 23:59 WIB)</option>
+                      <option value={0}>24 Jam (Fleksibel)</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" htmlFor="batch-default-notes-input">Catatan / Kelompok</label>
                     <input
                       id="batch-default-notes-input"
                       name="batch_default_notes"
                       type="text"
                       className="form-input"
-                      placeholder="Misal: Kelas Riset FKI Kelompok 2"
+                      placeholder="Misal: Kelas Riset FKI"
                       value={batchDefaultNotes}
                       onChange={(e) => setBatchDefaultNotes(e.target.value)}
                       autoComplete="off"
@@ -872,15 +933,16 @@ export const TokenGeneratorModal: React.FC<TokenGeneratorModalProps> = ({
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"
-                      onClick={handleExportBatchCsv}
+                      onClick={handleExportBatchExcel}
                       style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      title="Unduh berkas batch tiket format Excel (.xlsx) dengan border rapi"
                     >
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                         <polyline points="7 10 12 15 17 10" />
                         <line x1="12" y1="15" x2="12" y2="3" />
                       </svg>
-                      <span>Ekspor CSV</span>
+                      <span>Ekspor Excel</span>
                     </button>
                     <button
                       type="button"

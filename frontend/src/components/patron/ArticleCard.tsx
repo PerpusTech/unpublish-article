@@ -28,9 +28,11 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, searchQuery, 
     ? (article.creators as string).split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean)
     : [];
 
-  const mainAuthor = authors.length > 0 ? authors[0] : 'Peneliti Civitas UMS';
+  const hasAuthors = authors.length > 0;
+  const mainAuthor = hasAuthors ? authors[0] : null;
   const otherAuthorsCount = authors.length > 1 ? authors.length - 1 : 0;
   const authorNim = article.id_number || article.nim;
+  const hasDocuments = article.documents && article.documents.length > 0;
 
   return (
     <article
@@ -102,16 +104,24 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, searchQuery, 
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
             <circle cx="12" cy="7" r="4" />
           </svg>
-          <span className="author-name">
-            <HighlightText text={mainAuthor} query={searchQuery} />
-          </span>
-          {authorNim && (
-            <span className="author-nim">
-              (<HighlightText text={authorNim} query={searchQuery} />)
+          {hasAuthors ? (
+            <>
+              <span className="author-name">
+                <HighlightText text={mainAuthor!} query={searchQuery} />
+              </span>
+              {authorNim && (
+                <span className="author-nim">
+                  (<HighlightText text={authorNim} query={searchQuery} />)
+                </span>
+              )}
+              {otherAuthorsCount > 0 && (
+                <span className="other-authors-tag">+{otherAuthorsCount} penulis</span>
+              )}
+            </>
+          ) : (
+            <span className="author-name" style={{ fontStyle: 'italic', color: 'var(--color-text-muted)' }}>
+              Penulis belum dicantumkan
             </span>
-          )}
-          {otherAuthorsCount > 0 && (
-            <span className="other-authors-tag">+{otherAuthorsCount} penulis</span>
           )}
         </div>
 
@@ -142,7 +152,10 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, searchQuery, 
 
       {/* Card Action Footer */}
       <div className="academic-card-footer">
-        <div className="doc-count-pill">
+        <div
+          className={`doc-count-pill ${hasDocuments ? 'doc-has-files' : 'doc-empty'}`}
+          style={!hasDocuments ? { opacity: 0.75, fontStyle: 'italic' } : undefined}
+        >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
@@ -150,9 +163,9 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, searchQuery, 
             <line x1="16" y1="17" x2="8" y2="17" />
           </svg>
           <span>
-            {article.documents && article.documents.length > 0
+            {hasDocuments && article.documents
               ? `${article.documents.length} Dokumen Terlampir (PDF)`
-              : 'Naskah Digital Terkoneksi'}
+              : 'Dokumen naskah belum diunggah'}
           </span>
         </div>
 

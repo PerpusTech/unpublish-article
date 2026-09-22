@@ -17,7 +17,7 @@ export class TokenController {
    * Admin creates a new token
    */
   public static async createToken(req: Request, res: Response): Promise<void> {
-    const { patronName, patronNim, durationMinutes, notes } = req.body;
+    const { patronName, patronNim, durationMinutes, claimWindowMinutes, notes } = req.body;
 
     if (!patronName || !patronNim) {
       res.status(400).json({
@@ -40,12 +40,15 @@ export class TokenController {
       return;
     }
 
+    const parsedClaimWindow = claimWindowMinutes !== undefined ? parseInt(String(claimWindowMinutes), 10) : 30;
+
     try {
       const createdBy = req.admin?.email || 'admin@ums.ac.id';
       const result = await TokenService.createToken({
         patronName,
         patronNim,
         durationMinutes: duration,
+        claimWindowMinutes: isNaN(parsedClaimWindow) ? 30 : parsedClaimWindow,
         createdByAdmin: createdBy,
         notes
       });
@@ -70,7 +73,7 @@ export class TokenController {
    * Admin creates batch tokens for research classes/groups
    */
   public static async createBatchTokens(req: Request, res: Response): Promise<void> {
-    const { items, durationMinutes, defaultNotes } = req.body;
+    const { items, durationMinutes, claimWindowMinutes, defaultNotes } = req.body;
 
     if (!Array.isArray(items) || items.length === 0) {
       res.status(400).json({
@@ -103,11 +106,14 @@ export class TokenController {
       return;
     }
 
+    const parsedClaimWindow = claimWindowMinutes !== undefined ? parseInt(String(claimWindowMinutes), 10) : 30;
+
     try {
       const createdBy = req.admin?.email || 'admin@ums.ac.id';
       const result = await TokenService.createBatchTokens({
         items,
         durationMinutes: duration,
+        claimWindowMinutes: isNaN(parsedClaimWindow) ? 30 : parsedClaimWindow,
         createdByAdmin: createdBy,
         defaultNotes
       });
@@ -151,24 +157,64 @@ export class TokenController {
   }
 
   /**
-   * Export tokens as CSV
+   * Export tokens as formatted Excel (.xlsx)
    */
-  public static async exportCsv(req: Request, res: Response): Promise<void> {
+  public static async exportExcel(req: Request, res: Response): Promise<void> {
     const status = (req.query.status as string) || 'ALL';
     const search = req.query.search as string;
 
     try {
-      const csv = await TokenService.exportCsv({ status, search });
-      const filename = `tiket-pemustaka-ums-${new Date().toISOString().slice(0, 10)}.csv`;
+      const buffer = await TokenService.exportExcel({ status, search });
+      const filename = `tiket-pemustaka-ums-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.send(csv);
+      res.send(buffer);
     } catch (err: any) {
       res.status(500).json({
         error: {
           code: 'INTERNAL_ERROR',
           message: err.message || 'Gagal mengekspor data tiket.'
+        }
+      });
+    }
+  }
+
+  /**
+   * Export batch generated tokens as formatted Excel (.xlsx)
+   */
+  public static async exportBatchExcel(req: Request, res: Response): Promise<void> {
+    const { items } = req.body;
+    const origin = req.headers.origin || `${req.protocol}://${req.get('host')}`;
+
+    try {
+      if (!Array.isArray(items) || items.length === 0) {
+        res.status(400).json({
+          error: {
+            code: 'INVALID_INPUT',
+            message: 'Daftar tiket massal tidak valid atau kosong.'
+          }
+        });
+        return;
+      }
+
+      const buffer = await TokenService.exportBatchExcel(items, origin);
+      const filename = `batch-tiket-unpublish-${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(buffer);
+    } catch (err: any) {
+      res.status(500).json({
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: err.message || 'Gagal mengekspor batch tiket.'
         }
       });
     }
@@ -238,12 +284,12 @@ export class TokenController {
         });
       }
 
-      res.json({ success: true, message: 'Token berhasil dicabut.' });
+      res.json({ success: true, message: 'Izin sesi tiket berhasil dibatalkan.' });
     } catch (err: any) {
       res.status(500).json({
         error: {
           code: 'INTERNAL_ERROR',
-          message: err.message || 'Gagal mencabut token.'
+          message: err.message || 'Gagal membatalkan izin sesi tiket.'
         }
       });
     }

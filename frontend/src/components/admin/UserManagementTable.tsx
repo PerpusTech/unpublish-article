@@ -300,20 +300,20 @@ export const UserManagementTable: React.FC<UserManagementTableProps> = ({
         </div>
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Export CSV Button */}
+          {/* Export Excel Button */}
           <a
             href={exportUrl}
             className="btn btn-secondary btn-sm"
             download
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}
-            title="Unduh daftar pengguna format CSV"
+            title="Unduh daftar pengguna format Excel (.xlsx) dengan border rapi"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            <span>Ekspor CSV ({total.toLocaleString('id-ID')})</span>
+            <span>Ekspor Excel ({total.toLocaleString('id-ID')})</span>
           </a>
 
           <Button

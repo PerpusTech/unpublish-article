@@ -58,6 +58,8 @@ export async function initAppDb(): Promise<void> {
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       claimed_at DATETIME,
       expires_at DATETIME,
+      claim_window_minutes INTEGER DEFAULT 30,
+      claim_expires_at DATETIME,
       extended_minutes INTEGER DEFAULT 0,
       notes TEXT,
       incident_count INTEGER DEFAULT 0,
@@ -66,6 +68,12 @@ export async function initAppDb(): Promise<void> {
     )
   `);
 
+  try {
+    await query.run(`ALTER TABLE tokens ADD COLUMN claim_window_minutes INTEGER DEFAULT 30`);
+  } catch {}
+  try {
+    await query.run(`ALTER TABLE tokens ADD COLUMN claim_expires_at DATETIME`);
+  } catch {}
   try {
     await query.run(`ALTER TABLE tokens ADD COLUMN incident_count INTEGER DEFAULT 0`);
   } catch {}
@@ -79,6 +87,7 @@ export async function initAppDb(): Promise<void> {
   await query.run(`CREATE INDEX IF NOT EXISTS idx_tokens_code ON tokens(token_code)`);
   await query.run(`CREATE INDEX IF NOT EXISTS idx_tokens_status ON tokens(status)`);
   await query.run(`CREATE INDEX IF NOT EXISTS idx_tokens_expires ON tokens(expires_at)`);
+  await query.run(`CREATE INDEX IF NOT EXISTS idx_tokens_claim_expires ON tokens(claim_expires_at)`);
 
   // 2. Audit Logs Table
   await query.run(`

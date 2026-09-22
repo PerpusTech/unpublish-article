@@ -35,6 +35,27 @@ export const ThermalSlipModal: React.FC<ThermalSlipModalProps> = ({
   if (!isOpen || items.length === 0) return null;
 
   const handlePrint = () => {
+    document.body.classList.add('printing-slip');
+    const originalTitle = document.title;
+
+    // Generate dynamic file name for print / Save-as-PDF
+    if (items.length === 1) {
+      const item = items[0].token;
+      const cleanNim = (item.patron_nim || '').trim().replace(/[^a-zA-Z0-9]/g, '_');
+      const cleanCode = (item.token_code || '').trim().replace(/[^a-zA-Z0-9]/g, '-');
+      const cleanName = (item.patron_name || '').trim().replace(/[^a-zA-Z0-9]/g, '_');
+      document.title = `Slip_Tiket_${cleanCode}_${cleanNim || cleanName || 'UMS'}`;
+    } else {
+      const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      document.title = `Slip_Tiket_Batch_${items.length}_Token_${nowStr}`;
+    }
+
+    const onAfterPrint = () => {
+      document.body.classList.remove('printing-slip');
+      document.title = originalTitle;
+      window.removeEventListener('afterprint', onAfterPrint);
+    };
+    window.addEventListener('afterprint', onAfterPrint);
     window.print();
   };
 
@@ -204,8 +225,14 @@ export const ThermalSlipModal: React.FC<ThermalSlipModalProps> = ({
                       <span style={{ fontWeight: 'bold' }}>{token.patron_nim}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Durasi:</span>
+                      <span>Durasi Baca:</span>
                       <span style={{ fontWeight: 'bold' }}>{token.duration_minutes} Menit</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Batas Klaim:</span>
+                      <span style={{ fontWeight: 'bold' }}>
+                        {token.claim_expires_at ? formatDate(token.claim_expires_at) : '30 Menit'}
+                      </span>
                     </div>
                     {token.notes && (
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -222,8 +249,9 @@ export const ThermalSlipModal: React.FC<ThermalSlipModalProps> = ({
                     <strong>PETUNJUK PENGGUNAAN:</strong>
                     <div>1. Akses web: unpublish.ums.ac.id</div>
                     <div>2. Masukkan kode / scan QR di atas</div>
-                    <div>3. Durasi dihitung saat token diaktifkan</div>
-                    <div>4. Dilarang menyalin/menyebarkan naskah</div>
+                    <div>3. Aktifkan SEBELUM batas klaim berakhir</div>
+                    <div>4. Hitungan durasi mulai saat aktivasi</div>
+                    <div>5. Dilarang menyalin/menyebarkan naskah</div>
                   </div>
 
                   <div style={{ margin: '8px 0', borderTop: '1px dashed #000' }} />

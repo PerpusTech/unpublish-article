@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { TokenAdminItem } from '../../services/api';
 import { copyToClipboard } from '../../utils/clipboard';
+import { formatDateTime } from '../../utils/date';
 
 interface ShareTokenModalProps {
   isOpen: boolean;
@@ -39,6 +40,16 @@ export const ShareTokenModal: React.FC<ShareTokenModalProps> = ({
   const originUrl = window.location.origin;
   const directClaimUrl = `${originUrl}/?claim_token=${encodeURIComponent(token.token_code)}`;
 
+  const claimExpiryFormatted = token.claim_expires_at
+    ? formatDateTime(token.claim_expires_at, {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '30 Menit sejak diterbitkan';
+
   const waMessage = `*TIKET AKSES REPOSITORI UNPUBLISH — UPT Perpustakaan dan Layanan Digital UMS*
 
 Yth. Sdr/i *${token.patron_name}* (${token.patron_nim}),
@@ -46,13 +57,14 @@ Yth. Sdr/i *${token.patron_name}* (${token.patron_nim}),
 Berikut adalah tiket akses membaca naskah khusus EPrints Unpublish Anda:
 🔑 *Kode Token:* \`${token.token_code}\`
 ⏱️ *Durasi Sesi:* ${token.duration_minutes} Menit
+⏳ *Batas Waktu Klaim:* ${claimExpiryFormatted}
 🔗 *Tautan Akses Langsung:*
 ${directClaimUrl}
 
 *Petunjuk Penggunaan:*
-1. Buka tautan di atas melalui komputer layanan perpustakaan.
+1. Buka tautan di atas melalui komputer layanan perpustakaan SEBELUM batas waktu klaim berakhir.
 2. Atau masukkan Kode Token di halaman beranda.
-3. Hitungan mundur durasi membaca dimulai saat token pertama kali diaktifkan.
+3. Hitungan mundur durasi membaca baru dimulai saat token pertama kali diaktifkan.
 
 _UPT Perpustakaan dan Layanan Digital UMS_`;
 
@@ -63,10 +75,11 @@ Berikut adalah tiket otorisasi membaca naskah EPrints Unpublish UPT Perpustakaan
 
 - Kode Token: ${token.token_code}
 - Durasi Membaca: ${token.duration_minutes} Menit
+- Batas Waktu Klaim: ${claimExpiryFormatted}
 - Tautan Akses Langsung: ${directClaimUrl}
 
 Petunjuk Penggunaan:
-1. Buka tautan di atas di browser komputer layanan perpustakaan.
+1. Buka tautan di atas di browser komputer layanan perpustakaan sebelum batas klaim.
 2. Atau masukkan kode token di halaman utama katalog.
 3. Durasi membaca akan mulai aktif setelah token diverifikasi.
 
