@@ -29,6 +29,8 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ onSh
 
   // Active form states
   const [selectedMode, setSelectedMode] = useState<AccessControlMode>('HYBRID');
+  const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(120);
+  const [customDurationInput, setCustomDurationInput] = useState<string>('120');
   const [ipList, setIpList] = useState<string[]>([]);
   const [newIpInput, setNewIpInput] = useState<string>('');
   const [ipInputError, setIpInputError] = useState<string | null>(null);
@@ -48,6 +50,9 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ onSh
       const res: SecuritySettingsResponse = await api.getAdminSecuritySettings();
       if (res && res.settings) {
         setSelectedMode(res.settings.accessMode);
+        const dur = res.settings.sessionDurationMinutes || 120;
+        setSessionDurationMinutes(dur);
+        setCustomDurationInput(dur.toString());
         setIpList(res.settings.umsIpWhitelist || DEFAULT_UMS_SUBNETS);
         setLastUpdatedInfo({
           at: res.settings.updatedAt,
@@ -132,11 +137,19 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ onSh
       return;
     }
 
+    const durationNum = parseInt(customDurationInput, 10);
+    const finalDuration = !isNaN(durationNum) && durationNum > 0 ? durationNum : sessionDurationMinutes;
+
+    if (finalDuration < 5) {
+      onShowToast?.('Durasi sesi minimal adalah 5 menit.', 'danger');
+      return;
+    }
+
     setSaving(true);
     try {
-      const res = await api.updateAdminSecuritySettings(selectedMode, ipList);
+      const res = await api.updateAdminSecuritySettings(selectedMode, ipList, finalDuration);
       if (res.success) {
-        onShowToast?.('Pengaturan kebijakan keamanan & jaringan UMS berhasil disimpan!', 'success');
+        onShowToast?.('Pengaturan kebijakan keamanan & durasi sesi berhasil disimpan!', 'success');
         await fetchSettings();
       } else {
         onShowToast?.(res.message || 'Gagal menyimpan pengaturan.', 'danger');
@@ -446,9 +459,156 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ onSh
           </div>
         </Card>
 
+        {/* 2. Session Duration Configuration */}
+        <Card
+          title="2. Batas Durasi Sesi Membaca (Jalur Intranet & SSO CAS)"
+          subtitle="Atur batas waktu aktif sesi membaca untuk mengoptimalkan rotasi pemakaian komputer terminal perpustakaan dan mencegah antrean pemustaka."
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Quick Preset Buttons */}
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', display: 'block', marginBottom: 8 }}>
+                Pilihan Durasi Sesi:
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                {[
+                  { minutes: 60, label: '60 Menit (1 Jam)', desc: 'Rotasi Cepat / Antrean Padat' },
+                  { minutes: 120, label: '120 Menit (2 Jam)', desc: 'Standar Membaca Skripsi', recommended: true },
+                  { minutes: 240, label: '240 Menit (4 Jam)', desc: 'Sesi Membaca Menengah' },
+                  { minutes: 480, label: '480 Menit (8 Jam)', desc: 'Sesi Riset Seharian' },
+                  { minutes: 1440, label: '1440 Menit (24 Jam)', desc: 'Bebas 1 Hari Penuh' },
+                ].map((item) => {
+                  const isSelected = sessionDurationMinutes === item.minutes;
+                  return (
+                    <div
+                      key={item.minutes}
+                      onClick={() => {
+                        setSessionDurationMinutes(item.minutes);
+                        setCustomDurationInput(item.minutes.toString());
+                      }}
+                      style={{
+                        padding: '14px 16px',
+                        borderRadius: 10,
+                        border: `2px solid ${isSelected ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                        backgroundColor: isSelected ? 'rgba(2, 132, 199, 0.08)' : 'var(--color-surface-subtle)',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        position: 'relative',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 4,
+                      }}
+                    >
+                      {item.recommended && (
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: 8,
+                            right: 8,
+                            backgroundColor: 'var(--color-primary)',
+                            color: '#fff',
+                            fontSize: 9,
+                            fontWeight: 700,
+                            padding: '1px 6px',
+                            borderRadius: 10,
+                          }}
+                        >
+                          DISARANKAN
+                        </span>
+                      )}
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: isSelected ? 'var(--color-primary)' : 'var(--color-text)' }}>
+                        {item.label}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--color-text-muted)', lineHeight: 1.3 }}>
+                        {item.desc}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Custom Duration Input */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 16,
+                padding: '14px 16px',
+                borderRadius: 10,
+                backgroundColor: 'var(--color-surface-subtle)',
+                border: '1px solid var(--color-border)',
+                flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <label style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text)', display: 'block', marginBottom: 4 }}>
+                  Atau masukkan durasi kustom (dalam menit):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="number"
+                    min="5"
+                    max="10080"
+                    value={customDurationInput}
+                    onChange={(e) => {
+                      setCustomDurationInput(e.target.value);
+                      const parsed = parseInt(e.target.value, 10);
+                      if (!isNaN(parsed) && parsed > 0) {
+                        setSessionDurationMinutes(parsed);
+                      }
+                    }}
+                    placeholder="Contoh: 90"
+                    style={{
+                      width: 120,
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      border: '1px solid var(--color-border)',
+                      backgroundColor: 'var(--color-surface)',
+                      color: 'var(--color-text)',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      fontFamily: 'monospace',
+                      outline: 'none',
+                    }}
+                  />
+                  <span style={{ fontSize: 13, color: 'var(--color-text-muted)', fontWeight: 600 }}>menit</span>
+                </div>
+              </div>
+
+              {/* Converted description */}
+              <div
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  backgroundColor: 'rgba(2, 132, 199, 0.1)',
+                  color: 'var(--color-primary)',
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+                <span>
+                  Masa Aktif:{' '}
+                  {sessionDurationMinutes >= 60
+                    ? `${Math.floor(sessionDurationMinutes / 60)} Jam${sessionDurationMinutes % 60 > 0 ? ` ${sessionDurationMinutes % 60} Menit` : ''}`
+                    : `${sessionDurationMinutes} Menit`}{' '}
+                  sejak pemustaka melakukan check-in / login SSO
+                </span>
+              </div>
+            </div>
+          </div>
+        </Card>
+
         {/* 3. UMS Network IP / Subnet Whitelist Manager */}
         <Card
-          title="2. Daftar Subnet & IP Kampus UMS (Whitelist)"
+          title="3. Daftar Subnet & IP Kampus UMS (Whitelist)"
           subtitle="Alamat IP atau CIDR yang dikenali sebagai jaringan resmi kampus Universitas Muhammadiyah Surakarta."
           action={
             <Button

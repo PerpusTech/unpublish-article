@@ -13,7 +13,15 @@ export const App: React.FC = () => {
   const [session, setSession] = useState<PatronSession | null>(() => {
     try {
       const saved = localStorage.getItem('ums_patron_session');
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      const parsed: PatronSession = JSON.parse(saved);
+      if (parsed?.expires_at) {
+        parsed.remaining_seconds = Math.max(
+          0,
+          Math.floor((new Date(parsed.expires_at).getTime() - Date.now()) / 1000)
+        );
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -40,6 +48,19 @@ export const App: React.FC = () => {
   const [isClaimModalOpen, setIsClaimModalOpen] = useState<boolean>(false);
   const [initialClaimToken, setInitialClaimToken] = useState<string>('');
   const [ssoToast, setSsoToast] = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
+
+  // Monitor scroll position to show/hide scroll-to-top button
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 250);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // Handle Patron SSO Callback & direct claim token from URL
   useEffect(() => {
@@ -51,7 +72,11 @@ export const App: React.FC = () => {
       const name = params.get('name') || 'Civitas Akademika UMS';
       const tokenId = params.get('token_id') || `sso_${nim}_${Date.now()}`;
       const tokenCode = params.get('token_code') || `SSO-${nim}`;
-      const expiresAt = params.get('expires_at') || new Date(Date.now() + 86400000).toISOString();
+      const expiresAt = params.get('expires_at') || new Date(Date.now() + 7200000).toISOString();
+
+      const diffSecs = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+      const paramSecs = parseInt(params.get('remaining_seconds') || '', 10);
+      const remainingSeconds = !isNaN(paramSecs) && paramSecs > 0 ? paramSecs : diffSecs;
 
       const newSession: PatronSession = {
         id: tokenId,
@@ -59,7 +84,7 @@ export const App: React.FC = () => {
         patron_name: name,
         patron_nim: nim,
         expires_at: expiresAt,
-        remaining_seconds: 86400,
+        remaining_seconds: remainingSeconds,
       };
 
       localStorage.setItem('ums_patron_session', JSON.stringify(newSession));
@@ -349,30 +374,32 @@ export const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Theme toggle bar + scroll to top, positioned directly above the footer */}
+      {/* Theme toggle bar + scroll to top, positioned bottom-right */}
       <div className="theme-toggle-container">
         <ThemeToggle />
-        <button
-          type="button"
-          className="theme-toggle-btn"
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          title="Kembali ke Atas"
-          aria-label="Kembali ke Atas"
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
+        {showScrollTop && (
+          <button
+            type="button"
+            className="theme-toggle-btn scroll-to-top-btn"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            title="Kembali ke Atas"
+            aria-label="Kembali ke Atas"
           >
-            <polyline points="18 15 12 9 6 15" />
-          </svg>
-        </button>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="18 15 12 9 6 15" />
+            </svg>
+          </button>
+        )}
       </div>
 
 

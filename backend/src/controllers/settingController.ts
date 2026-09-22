@@ -68,7 +68,17 @@ export class SettingController {
 
       const { patronNim, patronName } = req.body;
 
-      if (!patronNim || typeof patronNim !== 'string' || !patronNim.trim()) {
+      const cleanNim = (patronNim && typeof patronNim === 'string' ? patronNim : '').trim().toUpperCase();
+      const cleanName = (patronName && typeof patronName === 'string' ? patronName : '').trim();
+
+      const JUNK_PATTERNS = [
+        'TEST', 'TESTING', 'ASDF', 'QWERTY', 'ANONIM', 'ANONYMOUS', 'UNKNOWN',
+        'ADMIN', 'USER', 'COBA', 'COBACOBA', 'SAMPLE', 'DEMO', '12345', '123456',
+        'ABCDE', 'NULL', 'UNDEFINED', 'XYZ', 'XXXX', 'AAAA', 'JELEK', 'GAKTAU', 'GATAU'
+      ];
+
+      // 1. NIM Validation
+      if (!cleanNim) {
         res.status(400).json({
           error: {
             code: 'INVALID_NIM',
@@ -78,7 +88,29 @@ export class SettingController {
         return;
       }
 
-      if (!patronName || typeof patronName !== 'string' || !patronName.trim()) {
+      if (cleanNim.length < 5 || cleanNim.length > 25) {
+        res.status(400).json({
+          error: {
+            code: 'INVALID_NIM',
+            message: 'Nomor identitas NIM/NIDN harus antara 5 hingga 25 karakter.',
+          },
+        });
+        return;
+      }
+
+      const isJunkNim = JUNK_PATTERNS.some((p) => cleanNim.includes(p)) || /^(.)\1{4,}$/.test(cleanNim);
+      if (isJunkNim) {
+        res.status(400).json({
+          error: {
+            code: 'INVALID_NIM',
+            message: 'Format NIM/NIDN tidak valid. Mohon masukkan identitas resmi Anda.',
+          },
+        });
+        return;
+      }
+
+      // 2. Name Validation
+      if (!cleanName) {
         res.status(400).json({
           error: {
             code: 'INVALID_NAME',
@@ -88,17 +120,64 @@ export class SettingController {
         return;
       }
 
-      const cleanNim = patronNim.trim().toUpperCase();
-      const cleanName = patronName.trim();
+      if (cleanName.length < 5) {
+        res.status(400).json({
+          error: {
+            code: 'INVALID_NAME',
+            message: 'Nama lengkap minimal 5 karakter.',
+          },
+        });
+        return;
+      }
+
+      if (!/^[a-zA-Z\s'’.\-]+$/.test(cleanName)) {
+        res.status(400).json({
+          error: {
+            code: 'INVALID_NAME',
+            message: 'Nama lengkap hanya boleh memuat huruf alfabet (tanpa angka atau karakter aneh).',
+          },
+        });
+        return;
+      }
+
+      const words = cleanName.split(/\s+/).filter(Boolean);
+      if (words.length < 2) {
+        res.status(400).json({
+          error: {
+            code: 'INVALID_NAME',
+            message: 'Harap masukkan nama lengkap minimal 2 kata (contoh: Ahmad Dahlan atau Muhammad Ilham).',
+          },
+        });
+        return;
+      }
+
+      const upperName = cleanName.toUpperCase();
+      const isJunkName = JUNK_PATTERNS.some((p) => upperName.includes(p)) || /^(.)\1{3,}$/.test(cleanName.replace(/\s/g, ''));
+      if (isJunkName) {
+        res.status(400).json({
+          error: {
+            code: 'INVALID_NAME',
+            message: 'Nama yang dimasukkan tidak valid. Harap gunakan nama lengkap resmi.',
+          },
+        });
+        return;
+      }
+
       const sanitizedIp = clientIp.replace(/[^a-zA-Z0-9]/g, '_');
       const sessionId = `intranet_${sanitizedIp}_${cleanNim}`;
+
+      const durationMinutes = settings.sessionDurationMinutes || 120;
+      const nowMs = Date.now();
+      const now = new Date(nowMs).toISOString();
+      const expiresAt = new Date(nowMs + durationMinutes * 60 * 1000).toISOString();
+      const remainingSeconds = durationMinutes * 60;
 
       // Set cookies for subsequent requests
       const cookieOptions = {
         httpOnly: false,
         secure: false,
         sameSite: 'lax' as const,
-        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        maxAge: durationMinutes * 60 * 1000,
         path: '/',
       };
 
@@ -119,8 +198,6 @@ export class SettingController {
       });
 
       // Also persist to tokens table so it appears in Sesi & Tiket active sessions tab
-      const now = new Date().toISOString();
-      const expiresAt = new Date(Date.now() + 86400000).toISOString();
       const tokenCode = `INT-${cleanNim}`;
 
       try {
@@ -130,12 +207,13 @@ export class SettingController {
           `INSERT INTO tokens (
             id, token_code, patron_name, patron_nim, duration_minutes,
             status, created_by_admin, created_at, claimed_at, expires_at, notes
-          ) VALUES (?, ?, ?, ?, 1440, 'ACTIVE', 'CAMPUS_INTRANET', ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, 'ACTIVE', 'CAMPUS_INTRANET', ?, ?, ?, ?)`,
           [
             sessionId,
             tokenCode,
             cleanName,
             cleanNim,
+            durationMinutes,
             now,
             now,
             expiresAt,
@@ -152,7 +230,7 @@ export class SettingController {
         patron_name: cleanName,
         patron_nim: cleanNim,
         expires_at: expiresAt,
-        remaining_seconds: 86400,
+        remaining_seconds: remainingSeconds,
       };
 
       res.json({
@@ -167,7 +245,7 @@ export class SettingController {
   }
 
   /**
-   * Get admin security settings (Access Mode + IP Whitelist + Test Client IP)
+   * Get admin security settings (Access Mode + IP Whitelist + Session Duration + Test Client IP)
    */
   public static async getSecuritySettings(req: Request, res: Response): Promise<void> {
     try {
@@ -190,7 +268,7 @@ export class SettingController {
    * Update security settings (Admin only)
    */
   public static async updateSecuritySettings(req: Request, res: Response): Promise<void> {
-    const { accessMode, umsIpWhitelist } = req.body;
+    const { accessMode, umsIpWhitelist, sessionDurationMinutes } = req.body;
 
     if (!accessMode || !['HYBRID', 'UMS_NETWORK_ONLY', 'TOKEN_ONLY'].includes(accessMode)) {
       res.status(400).json({
@@ -214,15 +292,17 @@ export class SettingController {
 
     try {
       const adminEmail = req.admin?.email || 'admin@ums.ac.id';
+      const duration = parseInt(sessionDurationMinutes, 10) || 120;
       const updated = await SecuritySettingService.updateSettings(
         accessMode as AccessControlMode,
         umsIpWhitelist,
-        adminEmail
+        adminEmail,
+        duration
       );
 
       res.json({
         success: true,
-        message: 'Pengaturan keamanan dan kebijakan jaringan UMS berhasil diperbarui.',
+        message: 'Pengaturan keamanan, kebijakan jaringan, dan durasi sesi UMS berhasil diperbarui.',
         settings: updated,
       });
     } catch (err: any) {
@@ -246,9 +326,9 @@ export class SettingController {
         });
         return;
       }
-      const loginUrl = CasService.getPatronLoginUrl();
-      const switchAccountUrl = CasService.getPatronLogoutUrl(loginUrl);
-      res.json({ url: loginUrl, switchAccountUrl });
+      const serviceUrl = `${ENV.FRONTEND_URL || 'http://localhost:3000'}/api/v1/patron/sso/callback`;
+      const loginUrl = CasService.getPatronLoginUrl(serviceUrl);
+      res.json({ url: loginUrl });
     } catch (err: any) {
       console.error('[SettingController] Error patronCasLogin:', err);
       res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Gagal memproses URL login SSO.' } });
@@ -260,7 +340,8 @@ export class SettingController {
    */
   public static async patronCasCallback(req: Request, res: Response): Promise<void> {
     const ticket = req.query.ticket as string;
-    const frontendBase = ENV.FRONTEND_URL;
+    const frontendBase = ENV.FRONTEND_URL || 'http://localhost:3000';
+    const serviceUrl = `${ENV.FRONTEND_URL || 'http://localhost:3000'}/api/v1/patron/sso/callback`;
 
     if (!ticket) {
       res.redirect(`${frontendBase}/?patron_sso_error=NO_CAS_TICKET`);
@@ -268,23 +349,24 @@ export class SettingController {
     }
 
     try {
+      const clientIp = SecuritySettingService.extractClientIp(req);
+      const isUmsNetwork = await SecuritySettingService.isClientInUmsNetwork(clientIp);
       const settings = await SecuritySettingService.getSettings();
+
       if (settings.accessMode === 'TOKEN_ONLY') {
-        const errorMsg = encodeURIComponent('Kebijakan akses repositori saat ini disetel khusus tiket token meja layanan. Login SSO dinonaktifkan.');
+        const errorMsg = encodeURIComponent('Akses saat ini dibatasi hanya dengan Tiket Token Meja Layanan.');
         res.redirect(`${frontendBase}/?patron_sso_error=${errorMsg}`);
         return;
       }
 
-      const patronServiceUrl = ENV.CAS_SERVICE_URL;
-      const authResult = await CasService.validateTicket(ticket, patronServiceUrl);
+      const authResult = await CasService.validateTicket(ticket, serviceUrl);
 
       if (!authResult.success) {
-        const errorMsg = encodeURIComponent(authResult.error || 'Autentikasi SSO UMS gagal.');
+        const errorMsg = encodeURIComponent(authResult.error || 'Tiket SSO CAS tidak valid.');
         res.redirect(`${frontendBase}/?patron_sso_error=${errorMsg}`);
         return;
       }
 
-      // Extract NIM/UniID
       const rawNim =
         authResult.attributes?.['nim'] ||
         authResult.attributes?.['mhs_nim'] ||
@@ -296,34 +378,34 @@ export class SettingController {
 
       const cleanNim = rawNim.trim().toUpperCase();
 
-      // Extract official full name
       let cleanName = (authResult.name || '').trim();
       if (!cleanName || cleanName === cleanNim || cleanName === authResult.username) {
         const campusName = await CasService.resolveCampusName(cleanNim);
         cleanName = campusName || authResult.username || 'Civitas Akademika UMS';
       }
 
-      const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() || req.socket.remoteAddress || '127.0.0.1';
       const sanitizedIp = clientIp.replace(/[^a-zA-Z0-9]/g, '_');
       const sessionId = `sso_${sanitizedIp}_${cleanNim}_${Date.now().toString(36)}`;
       const tokenCode = `SSO-${cleanNim}`;
 
-      const now = new Date().toISOString();
-      const expiresAt = new Date(Date.now() + 86400000).toISOString(); // 24 hours
+      const durationMinutes = settings.sessionDurationMinutes || 120;
+      const nowMs = Date.now();
+      const now = new Date(nowMs).toISOString();
+      const expiresAt = new Date(nowMs + durationMinutes * 60 * 1000).toISOString();
+      const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
 
-      // Set cookie
       const cookieOptions = {
         httpOnly: false,
-        secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+        secure: isHttps,
         sameSite: 'lax' as const,
-        maxAge: 24 * 60 * 60 * 1000,
+        maxAge: durationMinutes * 60 * 1000,
         path: '/',
       };
 
       res.cookie('ums_intranet_nim', cleanNim, cookieOptions);
       res.cookie('ums_intranet_name', cleanName, cookieOptions);
 
-      // Audit log
+      // Log activation audit event
       const userAgent = (Array.isArray(req.headers['user-agent']) ? req.headers['user-agent'][0] : req.headers['user-agent']) || 'Unknown';
       const { AuditService } = await import('../services/auditService');
       AuditService.logAction({
@@ -336,39 +418,21 @@ export class SettingController {
         userAgent,
       });
 
-      // Persist / update civitas patron in admin_users table for login history & user management
+      // Also persist to tokens table so it appears in Sesi & Tiket active sessions tab
       const { query } = await import('../config/appDb');
-      const patronEmail = authResult.email?.toLowerCase() || `${cleanNim.toLowerCase()}@ums.ac.id`;
-      try {
-        const existingCivitas = await query.get('SELECT * FROM admin_users WHERE email = ?', [patronEmail]);
-        if (!existingCivitas) {
-          await query.run(
-            'INSERT INTO admin_users (email, name, role, is_active, last_login_at, sso_attributes) VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP, ?)',
-            [patronEmail, cleanName, 'USER', JSON.stringify(authResult.attributes || {})]
-          );
-        } else {
-          await query.run(
-            'UPDATE admin_users SET name = ?, last_login_at = CURRENT_TIMESTAMP, sso_attributes = ? WHERE email = ?',
-            [cleanName, JSON.stringify(authResult.attributes || {}), patronEmail]
-          );
-        }
-      } catch (userDbErr) {
-        console.warn('[SettingController] Warning updating patron in admin_users:', userDbErr);
-      }
-
-      // Persist to tokens table so it is managed in active sessions
       try {
         await query.run('DELETE FROM tokens WHERE id = ? OR token_code = ?', [sessionId, tokenCode]);
         await query.run(
           `INSERT INTO tokens (
             id, token_code, patron_name, patron_nim, duration_minutes,
             status, created_by_admin, created_at, claimed_at, expires_at, notes
-          ) VALUES (?, ?, ?, ?, 1440, 'ACTIVE', 'CAS_SSO', ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, 'ACTIVE', 'CAS_SSO', ?, ?, ?, ?)`,
           [
             sessionId,
             tokenCode,
             cleanName,
             cleanNim,
+            durationMinutes,
             now,
             now,
             expiresAt,
@@ -379,8 +443,10 @@ export class SettingController {
         console.warn('[SettingController] Warning persisting SSO token:', dbErr);
       }
 
+      const remainingSeconds = Math.max(0, Math.floor((new Date(expiresAt).getTime() - nowMs) / 1000));
+
       res.redirect(
-        `${frontendBase}/?patron_sso=success&nim=${encodeURIComponent(cleanNim)}&name=${encodeURIComponent(cleanName)}&token_id=${encodeURIComponent(sessionId)}&token_code=${encodeURIComponent(tokenCode)}&expires_at=${encodeURIComponent(expiresAt)}`
+        `${frontendBase}/?patron_sso=success&nim=${encodeURIComponent(cleanNim)}&name=${encodeURIComponent(cleanName)}&token_id=${encodeURIComponent(sessionId)}&token_code=${encodeURIComponent(tokenCode)}&expires_at=${encodeURIComponent(expiresAt)}&remaining_seconds=${remainingSeconds}`
       );
     } catch (err: any) {
       console.error('[Patron CAS Callback Error]:', err);

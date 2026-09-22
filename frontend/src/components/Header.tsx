@@ -20,18 +20,32 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenPatron,
   onOpenClaimModal,
 }) => {
-  const [secondsLeft, setSecondsLeft] = useState<number>(session?.remaining_seconds || 0);
+  const getEffectiveSecondsLeft = (): number => {
+    if (!session) return 0;
+    if (session.expires_at) {
+      const diff = Math.floor((new Date(session.expires_at).getTime() - Date.now()) / 1000);
+      return Math.max(0, diff);
+    }
+    return session.remaining_seconds || 0;
+  };
+
+  const [secondsLeft, setSecondsLeft] = useState<number>(getEffectiveSecondsLeft);
 
   useEffect(() => {
-    if (!session?.remaining_seconds) {
-      setSecondsLeft(0);
-      return;
-    }
-
-    setSecondsLeft(session.remaining_seconds);
+    const initial = getEffectiveSecondsLeft();
+    setSecondsLeft(initial);
+    if (initial <= 0) return;
 
     const interval = setInterval(() => {
       setSecondsLeft((prev) => {
+        if (session?.expires_at) {
+          const current = Math.max(0, Math.floor((new Date(session.expires_at).getTime() - Date.now()) / 1000));
+          if (current <= 0) {
+            clearInterval(interval);
+            return 0;
+          }
+          return current;
+        }
         if (prev <= 1) {
           clearInterval(interval);
           return 0;
@@ -41,7 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [session?.remaining_seconds, session?.expires_at]);
+  }, [session?.remaining_seconds, session?.expires_at, session?.id]);
 
   const formatTimer = (totalSeconds: number) => {
     const hours = Math.floor(totalSeconds / 3600);

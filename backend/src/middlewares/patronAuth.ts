@@ -62,20 +62,23 @@ export async function requirePatronSession(req: Request, res: Response, next: Ne
     const finalName = extractedName?.trim() || 'Civitas Akademika UMS';
     const sanitizedIp = clientIp.replace(/[^a-zA-Z0-9]/g, '_');
     const sessionId = extractedNim ? `intranet_${sanitizedIp}_${finalNim}` : `intranet_${sanitizedIp}`;
+    const durationMinutes = settings.sessionDurationMinutes || 120;
+    const durationMs = durationMinutes * 60 * 1000;
+    const remainingSeconds = durationMinutes * 60;
 
     return {
       id: sessionId,
       token_code: 'INTRANET_UMS',
       patron_name: finalName,
       patron_nim: finalNim,
-      duration_minutes: 1440,
+      duration_minutes: durationMinutes,
       extended_minutes: 0,
       status: 'ACTIVE',
       created_by_admin: 'CAMPUS_IP_POLICY',
       created_at: new Date().toISOString(),
       claimed_at: new Date().toISOString(),
-      expires_at: new Date(Date.now() + 86400000).toISOString(),
-      remaining_seconds: 86400,
+      expires_at: new Date(Date.now() + durationMs).toISOString(),
+      remaining_seconds: remainingSeconds,
     };
   };
 
@@ -232,19 +235,23 @@ export async function optionalPatronSession(req: Request, res: Response, next: N
             return next();
           }
         }
+        const optDurationMinutes = settings.sessionDurationMinutes || 120;
+        const optDurationMs = optDurationMinutes * 60 * 1000;
+        const optRemainingSeconds = optDurationMinutes * 60;
+
         req.patron = {
           id: sessionId,
           token_code: 'INTRANET_UMS',
           patron_name: finalName,
           patron_nim: finalNim,
-          duration_minutes: 1440,
+          duration_minutes: optDurationMinutes,
           extended_minutes: 0,
           status: 'ACTIVE',
           created_by_admin: 'CAMPUS_IP_POLICY',
           created_at: new Date().toISOString(),
           claimed_at: new Date().toISOString(),
-          expires_at: new Date(Date.now() + 86400000).toISOString(),
-          remaining_seconds: 86400,
+          expires_at: new Date(Date.now() + optDurationMs).toISOString(),
+          remaining_seconds: optRemainingSeconds,
         };
         return next();
       }

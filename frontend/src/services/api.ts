@@ -906,13 +906,14 @@ export const api = {
 
   async updateAdminSecuritySettings(
     accessMode: AccessControlMode,
-    umsIpWhitelist: string[]
+    umsIpWhitelist: string[],
+    sessionDurationMinutes?: number
   ): Promise<{ success: boolean; message: string; settings: SecuritySettings }> {
     const res = await fetch(`${API_BASE}/admin/settings/security`, {
       method: 'PUT',
       credentials: 'include',
       headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ accessMode, umsIpWhitelist }),
+      body: JSON.stringify({ accessMode, umsIpWhitelist, sessionDurationMinutes }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -1042,6 +1043,7 @@ export type AccessControlMode = 'HYBRID' | 'UMS_NETWORK_ONLY' | 'TOKEN_ONLY';
 export interface SecuritySettings {
   accessMode: AccessControlMode;
   umsIpWhitelist: string[];
+  sessionDurationMinutes?: number;
   updatedAt: string;
   updatedBy: string;
 }
@@ -1084,12 +1086,13 @@ export async function getAdminSecuritySettings(): Promise<SecuritySettingsRespon
 
 export async function updateAdminSecuritySettings(
   accessMode: AccessControlMode,
-  umsIpWhitelist: string[]
+  umsIpWhitelist: string[],
+  sessionDurationMinutes?: number
 ): Promise<{ success: boolean; message: string; settings: SecuritySettings }> {
   const res = await fetch(`${API_BASE}/admin/settings/security`, {
     method: 'PUT',
     headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ accessMode, umsIpWhitelist }),
+    body: JSON.stringify({ accessMode, umsIpWhitelist, sessionDurationMinutes }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

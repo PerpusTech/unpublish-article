@@ -6,6 +6,7 @@ export type AccessControlMode = 'HYBRID' | 'UMS_NETWORK_ONLY' | 'TOKEN_ONLY';
 export interface SecuritySettings {
   accessMode: AccessControlMode;
   umsIpWhitelist: string[];
+  sessionDurationMinutes: number;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -59,42 +60,29 @@ export class SecuritySettingService {
       cleanIp = cleanIp.replace('::ffff:', '');
     }
 
-    // Exact string match
-    if (cleanIp === trimmedCidr) return true;
-
-    // IPv4 CIDR matching
-    if (!cleanIp.includes('.') || !trimmedCidr.includes('.')) {
-      return false;
+    if (!trimmedCidr.includes('/')) {
+      return cleanIp === trimmedCidr;
     }
 
-    const [range, bitsStr] = trimmedCidr.split('/');
-    if (!range || !range.includes('.')) return false;
-
-    const bits = bitsStr ? parseInt(bitsStr, 10) : 32;
-    if (isNaN(bits) || bits < 0 || bits > 32) return false;
-
-    const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
+    const [range, bits] = trimmedCidr.split('/');
+    const mask = ~(2 ** (32 - parseInt(bits, 10)) - 1);
 
     try {
-      const ipInt = this.ipToInt(cleanIp);
-      const rangeInt = this.ipToInt(range);
-      return (ipInt & mask) === (rangeInt & mask);
+      return (this.ipToInt(cleanIp) & mask) === (this.ipToInt(range) & mask);
     } catch {
       return false;
     }
   }
 
   /**
-   * Extract accurate client IP from Express request, respecting proxies and reverse tunnels
+   * Extract client IP from request headers (x-forwarded-for, x-real-ip, or socket)
    */
   public static extractClientIp(req: Request): string {
-    const xForwardedFor = req.headers['x-forwarded-for'];
-    if (xForwardedFor) {
-      const ipStr = Array.isArray(xForwardedFor) ? xForwardedFor[0] : xForwardedFor;
-      if (ipStr && typeof ipStr === 'string') {
-        const firstIp = ipStr.split(',')[0].trim();
-        if (firstIp) return firstIp;
-      }
+    const forwarded = req.headers['x-forwarded-for'];
+    if (forwarded) {
+      const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+      const first = raw.split(',')[0].trim();
+      if (first) return first;
     }
     const realIp = req.headers['x-real-ip'];
     if (realIp && typeof realIp === 'string') {
@@ -123,6 +111,11 @@ export class SecuritySettingService {
         ['ums_ip_whitelist']
       );
 
+      const durationRow = await query.get<{ value: string }>(
+        'SELECT value FROM system_settings WHERE key = ?',
+        ['session_duration_minutes']
+      );
+
       const updatedByRow = await query.get<{ value: string }>(
         'SELECT value FROM system_settings WHERE key = ?',
         ['security_updated_by']
@@ -143,9 +136,18 @@ export class SecuritySettingService {
         } catch { }
       }
 
+      let sessionDurationMinutes = 120; // Default 2 hours
+      if (durationRow?.value) {
+        const parsed = parseInt(durationRow.value, 10);
+        if (!isNaN(parsed) && parsed >= 15 && parsed <= 10080) {
+          sessionDurationMinutes = parsed;
+        }
+      }
+
       this.cachedSettings = {
         accessMode,
         umsIpWhitelist,
+        sessionDurationMinutes,
         updatedAt: modeRow?.updated_at || new Date().toISOString(),
         updatedBy: updatedByRow?.value || 'SYSTEM',
       };
@@ -157,6 +159,7 @@ export class SecuritySettingService {
       return {
         accessMode: 'HYBRID',
         umsIpWhitelist: DEFAULT_UMS_IP_WHITELIST,
+        sessionDurationMinutes: 120,
         updatedAt: new Date().toISOString(),
         updatedBy: 'SYSTEM',
       };
@@ -169,7 +172,8 @@ export class SecuritySettingService {
   public static async updateSettings(
     accessMode: AccessControlMode,
     umsIpWhitelist: string[],
-    adminEmail: string
+    adminEmail: string,
+    sessionDurationMinutes: number = 120
   ): Promise<SecuritySettings> {
     const cleanedWhitelist = Array.from(
       new Set(
@@ -179,6 +183,7 @@ export class SecuritySettingService {
       )
     );
 
+    const validDuration = Math.max(15, Math.min(10080, parseInt(sessionDurationMinutes as any, 10) || 120));
     const now = new Date().toISOString();
 
     await query.run(
@@ -197,6 +202,13 @@ export class SecuritySettingService {
 
     await query.run(
       `INSERT INTO system_settings (key, value, updated_at)
+       VALUES ('session_duration_minutes', ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      [validDuration.toString(), now]
+    );
+
+    await query.run(
+      `INSERT INTO system_settings (key, value, updated_at)
        VALUES ('security_updated_by', ?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
       [adminEmail, now]
@@ -205,12 +217,13 @@ export class SecuritySettingService {
     this.cachedSettings = {
       accessMode,
       umsIpWhitelist: cleanedWhitelist,
+      sessionDurationMinutes: validDuration,
       updatedAt: now,
       updatedBy: adminEmail,
     };
     this.cacheExpiry = Date.now() + 10000;
 
-    console.log(`[SecuritySettings] Mode diubah ke: ${accessMode} oleh ${adminEmail} (Whitelist: ${cleanedWhitelist.length} aturan)`);
+    console.log(`[SecuritySettings] Mode: ${accessMode}, Durasi Sesi: ${validDuration} menit oleh ${adminEmail}`);
 
     return this.cachedSettings;
   }
